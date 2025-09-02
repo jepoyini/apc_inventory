@@ -1,0 +1,19 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Force HTTPS for /api
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{REQUEST_URI} ^/api [NC]
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+    # Ensure requests stay inside /api/
+    RewriteBase /api/
+
+    # Remove index.php from URLs
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php/$1 [L]
+</IfModule>
+
+# Set Directory Index
+DirectoryIndex index.php
