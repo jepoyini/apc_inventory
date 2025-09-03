@@ -170,7 +170,7 @@ useEffect(() => {
     }, [buttonloading]);
 
 
-    document.title = "SignIn | IBO Mastermind";
+    document.title = "SignIn | APC Inventory";
     return (
         <React.Fragment>
             <ParticlesAuth>
@@ -186,8 +186,8 @@ useEffect(() => {
                                 style={{ cursor: 'pointer' }}
                                 >
                                 <img
-                                    src="https://ibopro.com/dashboard/images/ibologo2.png"
-                                    alt="IBO Logo"
+                                    src={`${process.env.PUBLIC_URL}/images/logo2.png`}
+                                    alt="APC Inventory"
                                     height="150"
                                 />
                                 </div>

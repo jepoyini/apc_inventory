@@ -436,7 +436,7 @@ const Settings = () => {
         setG2facode(g2facode);
     };   
 
-    document.title = "Profile Settings | IBO Mastermind";
+    document.title = "Profile Settings | APC Inventory";
 
     return (
         <React.Fragment>

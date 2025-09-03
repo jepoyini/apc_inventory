@@ -3,7 +3,7 @@ import { Col, Container, Row } from 'reactstrap';
 import BreadCrumb from '../../Components/Common/BreadCrumb';
 
 const Downlines = () => {
-  document.title="Downline Members | IBO Mastermind";
+  document.title="Downline Members | APC Inventory";
 
   return (
     <React.Fragment>      

@@ -20,7 +20,7 @@ import { useParams } from 'react-router-dom';
 import CountUp from "react-countup";
 
 const DonationOrderHistory = () => {
-  document.title = "Expense Account | IBO Mastermind";
+  document.title = "Expense Account | APC Inventory";
   const navigate = useNavigate();
   const api = new APIClient();
 

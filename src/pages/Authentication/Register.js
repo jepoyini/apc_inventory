@@ -45,7 +45,7 @@ const Register = () => {
     const [inputSponsor, setInputSponsor] = useState('');
     const [captchaValue, setCaptchaValue] = useState(null);
     const [referrerFullName, setReferrerFullName] = useState('');
-    const [showModal, setShowModal] = useState(true);
+    const [showModal, setShowModal] = useState(false);
     const [errorusername, setErrorUsername] = useState("");
     const [isUsernameChecking, SetIsUsernameChecking] = useState(false); 
     const api = new APIClient();
@@ -107,7 +107,7 @@ const Register = () => {
                 }
             };
 
-            fetchData();
+          //  fetchData();
         }            
     }, []);
 
@@ -252,7 +252,7 @@ const Register = () => {
         navigate("/login"); // Redirect to Dashboard
     };
 
-    document.title = "SignUp | IBO Mastermind";
+    document.title = "SignUp | APC Inventory";
     useEffect(() => {
         const script = document.createElement("script");
         script.src = "https://cdn.lordicon.com/bhenfmcm.js";
@@ -295,8 +295,8 @@ const Register = () => {
                                 style={{ cursor: 'pointer' }}
                                 >
                                 <img
-                                    src="https://ibopro.com/dashboard/images/ibologo2.png"
-                                    alt="IBO Logo"
+                                    src={`${process.env.PUBLIC_URL}/images/logo2.png`}
+                                    alt="APC logo"
                                     height="150"
                                 />
                                 </div>
@@ -426,8 +426,6 @@ const Register = () => {
                                                 <CardBody className="p-4">
                                                     <div className="text-center mt-2">
                                                     <h5 className="text-primary">Create New Account</h5>
-                                                    <p className="text-muted">Get your free IBO Mastermind account now</p>
-                                                    <p className="">Referred By: {referrer}</p>
                                                     </div>
                                                     <div className="p-2 mt-4">
                                                         <Form

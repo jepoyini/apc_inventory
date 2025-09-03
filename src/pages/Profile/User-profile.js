@@ -87,7 +87,7 @@ const UserProfile = () => {
     }
   });
 
-  document.title = "Profile | IBO Mastermind";
+  document.title = "Profile | APC Inventory";
   return (
     <React.Fragment>
       <div className="page-content">

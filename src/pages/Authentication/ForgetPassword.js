@@ -28,7 +28,7 @@ import { APIClient } from "../../helpers/api_helper";
 
 const ForgetPasswordPage = props => {
   const api = new APIClient();
-  document.title="Reset Password | IBO Mastermind";
+  document.title="Reset Password | APC Inventory";
 
   const dispatch = useDispatch();
 
@@ -98,8 +98,8 @@ debugger;
                             <Col lg={12}>
                                 <div className="text-center mb-4 text-white-50">
                                     <div>
-                                        <Link to="https://ibopro.com" className="d-inline-block auth-logo">
-                                        <img src="https://ibopro.com/dashboard/images/ibologo2.png" alt="IBO Logo" height="150" />
+                                        <Link to="/" className="d-inline-block auth-logo">
+                                        <img src={`${process.env.PUBLIC_URL}/images/logo2.png`} alt="APC logo" height="150" />
                                         </Link>
                                     </div>
                                 </div>
@@ -114,7 +114,7 @@ debugger;
                 <CardBody className="p-4">
                   <div className="text-center mt-2">
                     <h5 className="text-primary">Forgot Password?</h5>
-                    <p className="text-muted">Reset password with IBO Mastermind</p>
+                    <p className="text-muted">Reset password with APC Inventory</p>
 
                     <lord-icon
                       src="https://cdn.lordicon.com/rhvddzym.json"

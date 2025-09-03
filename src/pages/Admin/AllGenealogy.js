@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 import AsyncSelect from 'react-select/async';
 
 const Genealogy = () => {
-  document.title = "Admin - All Genealogy Tree | BDM";
+  document.title = "Admin - All Genealogy Tree | APC";
   const Initdata = [
     {
       // initial tree data

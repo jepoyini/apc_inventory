@@ -116,7 +116,7 @@ const ManageContracts = () => {
    console.log("Chain ID:", chain?.id);
    console.log("Address:", address);
    console.log("Is Connected:", isConnected);
-   document.title = "Admin - Manage contracts| BDM";
+   document.title = "Admin - Manage contracts| APC";
 
    const navigate = useNavigate();
    const statusRef = useRef("");

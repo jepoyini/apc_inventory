@@ -41,7 +41,7 @@ const pageSize = 5; // Number of items per page
 
 const InvoiceList = () => {
    const api = new APIClient();
-  document.title = "Referrals  | IBO Mastermind";
+  document.title = "Referrals  | APC Inventory";
   const navigate = useNavigate();
   const { id } = useParams();
 

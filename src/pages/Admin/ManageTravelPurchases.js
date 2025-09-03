@@ -34,7 +34,7 @@ import CancelModal from "../../Components/Common/CancelModal";
 
 const DepositList = () => {
 
-  document.title = "Admin - Manage Travel Purchases | BDM";
+  document.title = "Admin - Manage Travel Purchases | APC";
 
   const navigate = useNavigate();
   const statusRef = useRef("");
@@ -151,7 +151,7 @@ const columns = useMemo(
     
         switch (planId) {
           case 1:
-            subscriptionName = "BDM Travel Franchise (1 year)";
+            subscriptionName = "APC Travel Franchise (1 year)";
             break;
           default:
             subscriptionName = "Unknown Subscription";

@@ -223,7 +223,7 @@ const PurchaseForm = () => {
     const referralLink = `https://ibopro.com/${obj.username}`;
   
     Swal.fire({
-      title: 'Invite a Friend to Join IBO Mastermind',
+      title: 'Invite a Friend to Join APC Inventory',
       html: `
         <div class="container-fluid px-0" style="text-align: left; width: 100%;">
           <div class="row mb-3">

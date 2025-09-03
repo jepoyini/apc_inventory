@@ -11,7 +11,7 @@ import ReactApexChart from "react-apexcharts";
 
 const DashboardEcommerce = () => {
   const api = new APIClient();
-  document.title = "IBO Mastermind";
+  document.title = "APC Inventory";
   const navigate = useNavigate();
 
   const [siteChecked, setSiteChecked] = useState({}); 
