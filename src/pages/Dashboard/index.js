@@ -233,7 +233,7 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
         const obj = JSON.parse(authUser);
         const uid = obj.id;
         const data = { uid, csrf_token: obj.csrf_token };
-
+debugger;
         const response = await api.post("/checkbalance", data);
 
         if (response.status === "success") {
@@ -339,37 +339,21 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
               <div className="h-100">
 
                 <Row>
-                  <Col xl={7} order={{ xs: 2, xl: 1 }}>
+                  <Col xl={12} order={{ xs: 2, xl: 1 }}>
                     <Section rightClickBtn={toggleRightColumn} />
-
-                    <div className="mobile-video-container">
-                      <video width="100%" controls poster="https://ibopro.com/dashboard/images/dashboard_video.jpg">
-                        <source src="https://ibopro.com/dashboard/videos/dashboard_video.mp4" type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    </div>
-
                     <Widget Userbalance={Userbalance} />                  
                   </Col>
-                  <Col xl={5}  order={{ xs: 1, xl: 2 }}>
-                    {/* Video Embed */}
-                    <div className="desktop-video-container">
-                      <video width="100%" controls poster="https://ibopro.com/dashboard/images/dashboard_video.jpg">
-                        <source src="https://ibopro.com/dashboard/videos/dashboard_video.mp4" type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    </div>
-                  </Col>
+
                 </Row>
 
                 <Row>
                   <Col xl={6}>
                     <Card className="card-height-100">
                       <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
-                        <h4 className="card-title mb-0 flex-grow-1">All IBO PRO Members by Country</h4>
+                        <h4 className="card-title mb-0 flex-grow-1">Stock per Warehouse</h4>
                         <div className="text-muted small">
-                          <span className="me-3">Total Countries: {totalCountries}</span>
-                          <span>Total Members: {totalUsers}</span>
+                          <span className="me-3">Total Warehouses: {totalCountries}</span>
+                          <span>Total Items: {totalUsers}</span>
                         </div>
                       </div>
                       <div className="card-body p-0">

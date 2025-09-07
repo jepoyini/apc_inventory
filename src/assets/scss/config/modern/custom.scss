@@ -136,6 +136,7 @@ File: Custom Css File
 
 .navbar-brand-box {
   margin-bottom: 20px;
+  margin-top: 20px;
 }
 
 .link-style {
@@ -349,4 +350,12 @@ body {
 
 .mr10px {
   margin-right: 10px; 
+}
+
+.mt-10 {
+  margin-top: -10px;
+}
+
+.mw-1650 {
+  max-width: 56rem;
 }

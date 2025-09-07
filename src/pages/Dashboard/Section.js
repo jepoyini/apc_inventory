@@ -72,35 +72,21 @@ const Section = (props) => {
                                 <Row className="align-items-center"> {/* Change align-items-end to align-items-center */}
                                     <Col sm={12}>
                                         <div className="">
+                                            <h2>Dashboard</h2>
                                             <p className=" mb-0">
                                                 <div className="flex-grow-1 text-truncate">
                                                     <span className="fs-16 mb-1 fb"><b>{greeting}, {userName} </b></span> 
                                                 </div>
                                             </p>
-                                            <p className="mb-0">
-                                                <span className="text-muted">Your replicated Link: {" "}</span>
-                                                <span id="rep_link" className="replicated-link mb-0" translate="no">
-                                                    <strong>
-                                                        https://ibopro.com/?sharing={replicatedLink}
-                                                        <i
-                                                            className="far fa-copy copy-icon"
-                                                            title="Copy to clipboard"
-                                                            onClick={copyToClipboard}
-                                                            style={{ cursor: 'pointer', marginLeft: '10px', color: '#007bff' }}
-                                                        ></i>
-                                                    </strong>
-                                                </span>
+                                            <p className=" mb-0">
+                                                <div className="flex-grow-1 text-truncate">
+                                                    <span className="fs-16 mb-1 fb">Welcome to American Plaque Inventory Management System</span> 
+                                                </div>
                                             </p>
-                                            <p className="mb-0">
-                                                <span className="text-muted">Your Sponsor is {" "}</span>
-                                                <span id="rep_link" className="replicated-link mb-0">
-                                                    <strong>{sponsor}</strong>
-                                                </span>
-                                            </p>   
-                                            <br></br><br/>
-                                            <p className="text mb-0">
-                                                Here’s an overview of your performance history
-                                            </p>                                            
+
+                                           
+                                         
+                                         
                                             <p>
                                             {/* <div className="center-badge flex-shrink-0"> */}
                                                 {/* <span className={`badge ${verified === '1' ? 'bg-success' : 'bg-danger'}`} style={{ marginRight: '10px' }}>

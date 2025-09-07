@@ -11,6 +11,7 @@ $allowed_origins = [
     "https://americanplaquecompany.com",
     "https://www.americanplaquecompany.com",
     "https://apidb.americanplaquecompany.com",
+    "https://inventory.americanplaquecompany.com"
 ];
 
 // Check if request has an origin and if it's in the allowed list

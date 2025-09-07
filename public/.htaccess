@@ -1,6 +1,6 @@
 
 RewriteEngine On
-RewriteBase /dashboard/
+RewriteBase /
 
 # Force HTTPS
 # RewriteCond %{HTTPS} off

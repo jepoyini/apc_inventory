@@ -13,23 +13,23 @@ class AuthFilter implements FilterInterface
     public function before(RequestInterface $request, $arguments = null)
     {
 
- // return response()->setJSON([
- //                'status' => 'error', 
- //                'message' => 'Access Denied.'])->setStatusCode(401);
+  // return response()->setJSON([
+  //                'status' => 'error', 
+  //                'message' => 'TSET Access Denied.'])->setStatusCode(401);
 
        $userid = $request->getVar('uid');
        if ($userid == 0) 
        {
             return response()->setJSON([
                 'status' => 'error', 
-                'message' => 'Access Denied.'])->setStatusCode(401);
+                'message' => '1Access Denied.'])->setStatusCode(401);
        }
      //  $request->getHeader('X-CSRF-TOKEN');
         $token_header = $request->getHeaderLine('Authorization'); // Get Bearer  
         if (!$token_header) {
             return response()->setJSON([
                 'status' => 'error', 
-                'message' => 'Access Denied.'])->setStatusCode(401);
+                'message' => '2Access Denied.'])->setStatusCode(401);
         }
     
         // ✅ Remove "Bearer " prefix
@@ -47,7 +47,7 @@ class AuthFilter implements FilterInterface
 
             return response()->setJSON([
                 'status' => 'error', 
-                'message' => 'Access Denied!'
+                'message' => '3Access Denied!'
                 //'authheader'=>$token_header
                  ])->setStatusCode(401);
         }

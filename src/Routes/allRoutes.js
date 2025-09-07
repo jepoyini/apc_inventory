@@ -19,6 +19,12 @@ import Register from "../pages/Authentication/Register";
 // User Profile
 import UserProfile from "../pages/Profile/Settings";
 
+import Warehouses from "../pages/Warehouses/Warehouses";
+import Reports from "../pages/Reports/Reports";
+import QRscan from "../pages/QRscan/QRscan";
+import Users from "../pages/Users/Users";
+import Inventory from "../pages/Inventory/Inventory";
+
 import Transactions from "../pages/Transactions/Transactions";
 import Rewards from "../pages/Rewards/Rewards";
 import Ewallets from "../pages/Ewallet/EwalletTransaction";
@@ -74,6 +80,13 @@ import ManageCategories from "../pages/Admin/ManageCategories";
 
 
 const authProtectedRoutes = [
+  { path: "/warehouses", component: <Warehouses  /> },  
+  { path: "/reports", component: <Reports  /> },
+  { path: "/qrscan", component: <QRscan  /> },
+  { path: "/users", component: <Users /> },  
+  { path: "/inventory", component: <Inventory /> },  
+  
+
   { path: "/topupwallet", component: <TopupWallet  /> },
   { path: "/statistics", component: <AdminDashboard  /> },  
   { path: "/activitylogs", component: <ActivityLogs  /> },

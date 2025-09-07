@@ -175,8 +175,50 @@ $routes->group('/p2p', ['namespace' => 'App\Controllers'], static function ($rou
 
 });
 
+    // Warehouses
+    $routes->post('/warehouses', 'WarehouseController::index');
+    $routes->post('/warehouses/create', 'WarehouseController::create');
+    $routes->post('/warehouses/(:num)/update', 'WarehouseController::update/$1');
+    $routes->post('/warehouses/(:num)/delete', 'WarehouseController::delete/$1');
+    $routes->post('/warehouses/(:num)/details', 'WarehouseController::details/$1');
+    $routes->post('/warehouses/(:num)/add-product', 'WarehouseController::addProduct/$1');
+    $routes->post('/warehouses/(:num)/move-product', 'WarehouseController::moveProduct/$1');
+    $routes->post('/warehouses/(:num)/remove-product', 'WarehouseController::removeProduct/$1');
 
+$routes->group('products', ['namespace' => 'App\Controllers'], function($routes) {
+    // main listing
+    $routes->post('/', 'ProductController::index');
+    
+    // create/update/delete
+    $routes->post('create', 'ProductController::create');
+    $routes->post('(:num)/update', 'ProductController::update/$1');
+    $routes->post('(:num)/delete', 'ProductController::delete/$1');
+    
+    // details
+    $routes->post('(:num)/details', 'ProductController::details/$1');
 
+    // images
+    $routes->post('(:num)/images/add', 'ProductController::addImage/$1');
 
+    // items (stock units)
+    $routes->post('(:num)/items/add', 'ProductController::addItem/$1');
+    $routes->post('(:num)/items/update', 'ProductController::updateItem/$1');
+    $routes->post('(:num)/items/delete', 'ProductController::deleteItem/$1');
+
+    // events
+    $routes->post('(:num)/events/add', 'ProductController::addEvent/$1');
+
+    // QR
+    $routes->post('(:num)/qr', 'ProductController::qr/$1');
+
+    // CSV export
+    $routes->post('export', 'ProductController::export');
+
+    // PRODUCT IMAGES
+    $routes->post('(:num)/images/upload', 'ProductController::uploadImages/$1');
+    $routes->post('(:num)/images/update', 'ProductController::updateImage/$1');
+    $routes->post('(:num)/images/delete', 'ProductController::deleteImage/$1');
+
+});
 
 

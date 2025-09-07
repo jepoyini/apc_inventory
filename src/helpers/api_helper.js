@@ -19,6 +19,7 @@ axios.defaults.headers.post["Content-Type"] = "application/json";
 
 
 export const setAuthToken = (token) => {
+
   if (token) {
     axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     sessionStorage.setItem("authToken", token); // Store token persistently
@@ -68,7 +69,19 @@ debugger;
         message = "Sorry! the data you are looking for could not be found";
         break;
       default:
-        message = error.message || error;
+        let msg = "";
+        try {
+          // Try to parse CodeIgniter error
+          const data = JSON.parse(error?.request?.responseText || "{}");
+          msg = data?.messages?.error || data?.message || msg;
+        } catch (e) {
+          // fallback to Axios' parsed response (if any)
+          msg = error?.response?.data?.messages?.error ||
+                error?.response?.data?.message ||
+                error?.message ||
+                msg;
+        }
+        message = msg;
     }
     return Promise.reject(message);
   }
@@ -119,6 +132,11 @@ class APIClient {
   };
   post = async (url, data,options = { showLoader: false }) => {
 
+   // If it's FormData, let Axios set multipart headers automatically
+    if (data instanceof FormData) {
+      axios.defaults.headers.post["Content-Type"] = "multipart/form-data";
+    }
+
     try {
       if (options.showLoader) {
         Swal.fire({
@@ -149,7 +167,7 @@ class APIClient {
         Swal.fire({
           icon: "error",
           title: "Access Denied!",
-          text: error?.message || "Something went wrong.",
+          text: error || "Something went wrong.",
         });
       }
   

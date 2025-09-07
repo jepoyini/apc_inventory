@@ -41,18 +41,18 @@ const Sidebar = ({ layoutType }) => {
 
           <Link to="/" className="logo logo-dark">
             <span className="logo-sm">
-              <img src={`${process.env.PUBLIC_URL}/images/ibologo2.png`} alt="" height="55" />
+              <img src={`${process.env.PUBLIC_URL}/images/logo2.png`} alt="" height="55" />
             </span>
             <span className="logo-lg">
-              <img src={`${process.env.PUBLIC_URL}/images/ibologo2.png`} alt="" height="150" />
+              <img src={`${process.env.PUBLIC_URL}/images/logo2.png`} alt="" height="90" />
             </span>
           </Link>
           <Link to="/" className="logo logo-light">
             <span className="logo-sm">
-              <img src={`${process.env.PUBLIC_URL}/images/ibologo2.png`} alt="" height="55" />
+              <img src={`${process.env.PUBLIC_URL}/images/logo2.png`} alt="" height="55" />
             </span>
             <span className="logo-lg">
-              <img src={`${process.env.PUBLIC_URL}/images/ibologo2.png`} alt="" height="150" />
+              <img src={`${process.env.PUBLIC_URL}/images/logo2.png`} alt="" height="90" />
             </span>
           </Link>
           <button

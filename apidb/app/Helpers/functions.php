@@ -1008,8 +1008,12 @@ function Deposit_Complete($user_id, $amount, $id = 0, $hash = '', $walletaddress
         return $location; 
     }
 
+
+
 	function getIPLocation($ip)
 	{
+        return ""; 
+        
         $url = "https://ipwhois.app/json/$ip";
         $response = file_get_contents($url);
         $data =  json_decode($response, true);
