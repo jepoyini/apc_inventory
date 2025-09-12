@@ -9,6 +9,41 @@ include 'app/Helpers/functions.php';
 
 class WarehouseController extends ResourceController
 {
+
+
+    public function getWarehousesStat()
+    {
+        $db = \Config\Database::connect();
+
+        try {
+            // Query warehouses with name + current_stock
+            $builder = $db->table('warehouses');
+            $builder->select('name, current_stock');
+            $query = $builder->get();
+
+            $warehouses = [];
+
+            foreach ($query->getResultArray() as $row) {
+                $warehouses[] = [
+                    'name'          => $row['name'],
+                    'current_stock' => (int) $row['current_stock']
+                ];
+            }
+
+            return $this->response->setJSON([
+                'status' => 'success',
+                'data'   => $warehouses
+            ]);
+        } catch (\Exception $e) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'Failed to retrieve warehouses.',
+                'error'   => $e->getMessage()
+            ]);
+        }
+    }
+
+
     /** POST /warehouses (list + filter + pagination) */
     public function index()
     {

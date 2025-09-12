@@ -1,5 +1,5 @@
 import React, { useState, useEffect, PureComponent } from 'react';
-import { Col, Container, Row, Card, CardBody } from "reactstrap";
+import { Badge ,Col, Container, Row, Card, CardBody,CardHeader,CardTitle,CardContent   } from "reactstrap";
 import classNames from "classnames";
 import Widget from "./Widgets";
 import Section from "./Section";
@@ -18,7 +18,33 @@ const DashboardEcommerce = () => {
   const [siteSponsorhasrecord, setSiteSponsorhasrecord] = useState({}); 
   const [sponsorhasfirstfive, setSponsorHasFirstFive] = useState(); 
 
+ const [isScanning, setIsScanning] = useState(false);
 
+const recentActivity = [
+    { id: 1, type: "scan", item: "Premium Achievement Plaque", user: "John Smith", time: "2 min ago", status: "success" },
+    { id: 2, type: "movement", item: "Crystal Excellence Trophy", user: "Sarah Johnson", time: "5 min ago", status: "warning" },
+    { id: 3, type: "low_stock", item: "Custom Engraved Signage", user: "System", time: "10 min ago", status: "alert" },
+    { id: 4, type: "scan", item: "Wooden Award Plaque", user: "Mike Wilson", time: "15 min ago", status: "success" },
+    { id: 5, type: "movement", item: "Metal Trophy Base", user: "Lisa Davis", time: "20 min ago", status: "success" },
+  ];
+
+  const getActivityIcon = (type) => {
+    switch (type) {
+      case "scan": return <i className="ri-qr-code-line" />;
+      case "movement": return <i className="ri-exchange-line" />;
+      case "low_stock": return <i className="ri-alert-line" />;
+      default: return <i className="ri-box-3-line" />;
+    }
+  };
+
+  const getActivityColor = (status) => {
+    switch (status) {
+      case "success": return "bg-success-subtle text-success border-success-subtle";
+      case "warning": return "bg-warning-subtle text-warning border-warning-subtle";
+      case "alert": return "bg-danger-subtle text-danger border-danger-subtle";
+      default: return "bg-light text-muted border-light";
+    }
+  };
   const [Userbalance, setUserBalance] = useState({
     todays_earnings: 0,
     total_earnings: 0,
@@ -41,7 +67,7 @@ const DashboardEcommerce = () => {
   const [loadingChart, setLoadingChart] = useState(true);
 
   const totalCountries = downlineStats.length;
-  const totalUsers = downlineStats.reduce((sum, item) => sum + item.count, 0);
+  const totalUsers = downlineStats.reduce((sum, item) => sum + item.current_stock, 0);
 
   const ActionCard = ({ title, description, link }) => (
     <div className="rounded-md border p-4 hover:bg-accent transition-colors cursor-pointer">
@@ -76,6 +102,9 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
       navigate(link);
     }
   };
+
+
+
 
   const shouldShowDialog = () => {
 
@@ -174,8 +203,8 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
 
     const series = [
       {
-        name: "Downlines",
-        data: downlineStats.map(item => item.count)
+        name: "Current Stocks",
+        data: downlineStats.map(item => item.current_stock)
       }
     ];
 
@@ -206,7 +235,7 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
       legend: { show: false },
       grid: { show: false },
       xaxis: {
-        categories: downlineStats.map(item => item.country)
+        categories: downlineStats.map(item => item.name)
       }
     };
 
@@ -217,7 +246,7 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
           options={options}
           series={series}
           type="bar"
-          height={76 * 30}
+          height={6 * 30}
           className="apex-charts"
         />
       </div>
@@ -233,7 +262,7 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
         const obj = JSON.parse(authUser);
         const uid = obj.id;
         const data = { uid, csrf_token: obj.csrf_token };
-debugger;
+debugger; 
         const response = await api.post("/checkbalance", data);
 
         if (response.status === "success") {
@@ -266,12 +295,13 @@ debugger;
 
           // Fetch chart data
           setLoadingChart(true);
-          const statsRes = await api.post("/getalluserstats", { uid });
+          debugger;
+          const statsRes = await api.post("/warehouses/stat", { uid });
 
           if (statsRes.status === "success" && Array.isArray(statsRes.data)) {
             setDownlineStats(statsRes.data);
-            const countries = statsRes.data.map(item => item.country);
-            const counts = statsRes.data.map(item => item.count);
+            const countries = statsRes.data.map(item => item.name);
+            const counts = statsRes.data.map(item => item.current_stock);
             setcountryData([{ name: "Downlines", data: counts }]);
           }
 
@@ -287,24 +317,24 @@ debugger;
           });
         }
 
-        const linksRes = await api.post("/getsitelinks", data); // <-- create this API if needed
-        if (linksRes?.success && Array.isArray(linksRes.data)) {
+        // const linksRes = await api.post("/getsitelinks", data); // <-- create this API if needed
+        // if (linksRes?.success && Array.isArray(linksRes.data)) {
 
-          const map = {};
-          const smap = {};
-          for (const row of linksRes.data) {
-            if (row?.site_id && String(row.reference || "").trim() !== "") {
-              map[row.site_id] = true;
-            }
-            if (row?.site_id && row?.sponsor_has_record ) {
-              smap[row.site_id] = true;
-            }
+        //   const map = {};
+        //   const smap = {};
+        //   for (const row of linksRes.data) {
+        //     if (row?.site_id && String(row.reference || "").trim() !== "") {
+        //       map[row.site_id] = true;
+        //     }
+        //     if (row?.site_id && row?.sponsor_has_record ) {
+        //       smap[row.site_id] = true;
+        //     }
 
-          }
-          setSiteChecked(map);
-          setSiteSponsorhasrecord(smap);
-          setSponsorHasFirstFive(linksRes.sponsor_has_first_five);
-        }
+        //   }
+        //   setSiteChecked(map);
+        //   setSiteSponsorhasrecord(smap);
+        //   setSponsorHasFirstFive(linksRes.sponsor_has_first_five);
+        // }
 
 
       } catch (error) {
@@ -315,6 +345,9 @@ debugger;
 
     fetchData();
   }, []);
+
+
+  
 
   const [rightColumn, setRightColumn] = useState(true);
   const toggleRightColumn = () => setRightColumn(!rightColumn);
@@ -347,13 +380,62 @@ debugger;
                 </Row>
 
                 <Row>
+
+
+
+                  <Col xl={6}>
+
+                    <Card>
+                      <CardHeader>
+                        <h5 className="card-title mb-0">
+                          <i className="ri-activity-line me-2"></i> Recent Activity
+                        </h5>
+                      </CardHeader>
+                      <CardBody>
+                        <div className="vstack gap-3">
+                          {recentActivity.map((activity) => (
+                            <div key={activity.id} className="d-flex align-items-center gap-3">
+                              <div
+                                className={`rounded-circle d-flex align-items-center justify-content-center ${getActivityColor(
+                                  activity.status
+                                )}`}
+                                style={{ width: "36px", height: "36px" }}
+                              >
+                                {getActivityIcon(activity.type)}
+                              </div>
+                              <div className="flex-grow-1">
+                                <h6 className="mb-1">{activity.item}</h6>
+                                <small className="text-muted">
+                                  {activity.user} • {activity.time}
+                                </small>
+                              </div>
+                              <Badge
+                                color={
+                                  activity.status === "success"
+                                    ? "success"
+                                    : activity.status === "warning"
+                                    ? "warning"
+                                    : "danger"
+                                }
+                                pill
+                              >
+                                {activity.type.replace("_", " ")}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </CardBody>
+                    </Card>
+
+                  </Col>
+
                   <Col xl={6}>
                     <Card className="card-height-100">
                       <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
                         <h4 className="card-title mb-0 flex-grow-1">Stock per Warehouse</h4>
                         <div className="text-muted small">
                           <span className="me-3">Total Warehouses: {totalCountries}</span>
-                          <span>Total Items: {totalUsers}</span>
+                          <span>Total Stocks: {totalUsers}</span>
                         </div>
                       </div>
                       <div className="card-body p-0">
@@ -375,39 +457,6 @@ debugger;
                     </Card>
                   </Col>
 
-                  <Col xl={6}>
-                    <Card className="card-animate">
-                      <CardBody>
-                        <div className="flex flex-col space-y-1.5 p-6">
-                          <h3 className="text-2xl font-semibold leading-none tracking-tight">Getting Started</h3>
-                          <p className="text-sm text-muted-foreground">Your checklist to success</p>
-                        </div>
-                        <div className="p-6 pt-0 grid gap-4">
-
-                          <IBOActionCard title="Pledging Plan" description="Start Your Giving" link="/sharingdonations/studio" withCheckbox checkboxId="47"  />
-
-                          <IBOActionCard title="Food Plan" description="Order Your Shakes" link="/site/balanced-shakes" withCheckbox checkboxId="49"  />
-
-                          <IBOActionCard title="Wellness Plan" description="Buy Your Supplements" link="/site/decentralized-wellness" withCheckbox checkboxId="55" />
-
-                          <IBOActionCard title="Business Plan" description="Invest Into Your Business" link="/site/decentralized-internet" withCheckbox  checkboxId="40"/>
-
-                          <IBOActionCard title="Training Plan" description="Educate Your Community" link="/site/ai-interactive-learning" withCheckbox  checkboxId="57"/>
-
-                          <IBOActionCard title="Marketing Plan" description="Share Your Opportunity" link="/site/aimarketingsystem" withCheckbox  checkboxId="62"/>
-
-                          <IBOActionCard title="Financial Plan" description="Diversify Your Crypto Portfolio" link="SHARING.financial" withCheckbox  checkboxId="51" />
-
-                          <IBOActionCard title="Retirement Plan" description="Purchase Your Banking Node" link="/site/decentralized-banking" withCheckbox checkboxId="59"/>
-
-                          <IBOActionCard title="Legacy Plan" description="Set Up Your Passive DAOs" link="/site/dao-trading" withCheckbox checkboxId="48" />
-
-                          <IBOActionCard title="Hope Plan" description="Give Your Story Of Hope" withCheckbox  />
-
-                        </div>
-                      </CardBody>
-                    </Card>
-                  </Col>
                 </Row>
               </div>
             </Col>

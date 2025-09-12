@@ -70,21 +70,48 @@ const TableContainer = ({
     if (customPageSize) table.setPageSize(customPageSize);
   }, [customPageSize, table]);
 
-  const getVisiblePages = (pageIndex, pageCount, maxVisible = 10) => {
-    const pages = [];
-    if (pageCount <= maxVisible) {
-      for (let i = 0; i < pageCount; i++) pages.push(i);
-    } else {
-      const left = Math.max(0, pageIndex - Math.floor(maxVisible / 2));
-      const right = Math.min(pageCount, left + maxVisible);
-      const adjustedLeft = Math.max(0, right - maxVisible);
+const getVisiblePages = (currentPage, totalPages, maxVisible = 7) => {
+  const pages = [];
+  const half = Math.floor(maxVisible / 2);
 
-      if (adjustedLeft > 0) pages.push(0, "start-ellipsis");
-      for (let i = adjustedLeft; i < right; i++) pages.push(i);
-      if (right < pageCount) pages.push("end-ellipsis", pageCount - 1);
-    }
-    return pages;
-  };
+  // Always show first page
+  pages.push(1);
+
+  let start = Math.max(2, currentPage - half);
+  let end = Math.min(totalPages - 1, currentPage + half);
+
+  // Shift window if too close to edges
+  if (currentPage <= half) {
+    start = 2;
+    end = Math.min(totalPages - 1, maxVisible);
+  } else if (currentPage + half >= totalPages) {
+    start = Math.max(2, totalPages - maxVisible + 1);
+    end = totalPages - 1;
+  }
+
+  // Add left ellipsis if needed
+  if (start > 2) {
+    pages.push("...");
+  }
+
+  // Add range of pages
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+
+  // Add right ellipsis if needed
+  if (end < totalPages - 1) {
+    pages.push("...");
+  }
+
+  // Always show last page
+  if (totalPages > 1) {
+    pages.push(totalPages);
+  }
+
+  return pages;
+};
+
 
   const startRecord = totalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endRecord = Math.min(currentPage * pageSize, totalRecords);
@@ -94,6 +121,8 @@ const TableContainer = ({
 
       {/* Pagination + PageSize (bottom only) */}
       <Row className="align-items-center mt-2 g-3 text-center text-sm-start">
+
+        {/* Showing */}
         <div className="col-sm d-flex align-items-center gap-3">
           <Input
             type="select"
@@ -117,37 +146,48 @@ const TableContainer = ({
           </div>
         </div>
 
+        {/* Paging */}
         <div className="col-sm-auto">
-          <ul className="pagination pagination-separated pagination-md mb-0">
+          <ul className="pagination pagination-separated pagination-md mb-0 flex-wrap justify-content-center overflow-auto">
             <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
-              <Link to="#" className="page-link" onClick={() => onPageChange(currentPage - 1)}>
+              <Link
+                to="#"
+                className="page-link"
+                onClick={() => onPageChange(currentPage - 1)}
+              >
                 Previous
               </Link>
             </li>
 
-            {getVisiblePages(currentPage - 1, totalPages, 10).map((item, idx) => (
-              <li key={idx} className="page-item">
-                {item === "start-ellipsis" || item === "end-ellipsis" ? (
-                  <span className="page-link">...</span>
-                ) : (
-                  <Link
-                    to="#"
-                    className={`page-link ${currentPage === item + 1 ? "active" : ""}`}
-                    onClick={() => onPageChange(item + 1)}
-                  >
-                    {item + 1}
-                  </Link>
-                )}
-              </li>
+            {getVisiblePages(currentPage, totalPages, window.innerWidth < 576 ? 3 : window.innerWidth < 768 ? 5 : 7)
+              .map((item, idx) => (
+                <li key={idx} className="page-item">
+                  {item === "..." ? (
+                    <span className="page-link">…</span>
+                  ) : (
+                    <Link
+                      to="#"
+                      className={`page-link ${currentPage === item ? "active" : ""}`}
+                      onClick={() => onPageChange(item)}
+                    >
+                      {item}
+                    </Link>
+                  )}
+                </li>
             ))}
 
             <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
-              <Link to="#" className="page-link" onClick={() => onPageChange(currentPage + 1)}>
+              <Link
+                to="#"
+                className="page-link"
+                onClick={() => onPageChange(currentPage + 1)}
+              >
                 Next
               </Link>
             </li>
           </ul>
         </div>
+
       </Row>
       <br></br>
 
@@ -208,6 +248,8 @@ const TableContainer = ({
 
       {/* Pagination + PageSize (bottom only) */}
       <Row className="align-items-center mt-2 g-3 text-center text-sm-start">
+
+        {/* Showing */}
         <div className="col-sm d-flex align-items-center gap-3">
           <Input
             type="select"
@@ -231,37 +273,48 @@ const TableContainer = ({
           </div>
         </div>
 
+        {/* Paging */}
         <div className="col-sm-auto">
-          <ul className="pagination pagination-separated pagination-md mb-0">
+          <ul className="pagination pagination-separated pagination-md mb-0 flex-wrap justify-content-center overflow-auto">
             <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
-              <Link to="#" className="page-link" onClick={() => onPageChange(currentPage - 1)}>
+              <Link
+                to="#"
+                className="page-link"
+                onClick={() => onPageChange(currentPage - 1)}
+              >
                 Previous
               </Link>
             </li>
 
-            {getVisiblePages(currentPage - 1, totalPages, 10).map((item, idx) => (
-              <li key={idx} className="page-item">
-                {item === "start-ellipsis" || item === "end-ellipsis" ? (
-                  <span className="page-link">...</span>
-                ) : (
-                  <Link
-                    to="#"
-                    className={`page-link ${currentPage === item + 1 ? "active" : ""}`}
-                    onClick={() => onPageChange(item + 1)}
-                  >
-                    {item + 1}
-                  </Link>
-                )}
-              </li>
+            {getVisiblePages(currentPage, totalPages, window.innerWidth < 576 ? 3 : window.innerWidth < 768 ? 5 : 7)
+              .map((item, idx) => (
+                <li key={idx} className="page-item">
+                  {item === "..." ? (
+                    <span className="page-link">…</span>
+                  ) : (
+                    <Link
+                      to="#"
+                      className={`page-link ${currentPage === item ? "active" : ""}`}
+                      onClick={() => onPageChange(item)}
+                    >
+                      {item}
+                    </Link>
+                  )}
+                </li>
             ))}
 
             <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
-              <Link to="#" className="page-link" onClick={() => onPageChange(currentPage + 1)}>
+              <Link
+                to="#"
+                className="page-link"
+                onClick={() => onPageChange(currentPage + 1)}
+              >
                 Next
               </Link>
             </li>
           </ul>
         </div>
+
       </Row>
 
     </Fragment>

@@ -10,6 +10,208 @@ include 'app/Helpers/functions.php';
 class ProductController extends ResourceController
 {
 
+    public function lookup()
+    {
+        $db = \Config\Database::connect();
+        $req = json_decode(file_get_contents("php://input"), true);
+        $code = trim($req['code'] ?? '');
+
+        if (!$code) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'Missing code'
+            ]);
+        }
+
+        // Try to match code against items or products
+        $builder = $db->table('items i')
+            ->select('i.id as item_id, i.serial_or_batch as code, 
+                      p.id as product_id, p.name, p.sku, 
+                      pi.url as primary_image')
+            ->join('products p', 'p.id=i.product_id')
+            ->join('product_images pi', 'pi.product_id=p.id AND pi.is_primary=1', 'left')
+            ->where('i.serial_or_batch', $code);
+
+        $row = $builder->get()->getRowArray();
+
+        if (!$row) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'Not found'
+            ]);
+        }
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'data'   => $row
+        ]);
+    }
+    
+    public function scan()
+    {
+        $db = \Config\Database::connect();
+        $req = $this->request->getJSON(true);
+
+        $code        = trim($req['code'] ?? '');
+        $action      = $req['action'] ?? null;
+        $warehouseId = $req['warehouse_id'] ?? null; // ✅ new
+        $userId      = session()->get('uid');
+
+        if (!$code) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Missing code']);
+        }
+
+        try {
+            $productId = null;
+
+            // 🔹 Lookup by item serial/batch
+            $item = $db->table('items')
+                ->select('id, product_id')
+                ->where('serial_or_batch', $code)
+                ->get()->getRowArray();
+
+            if ($item) {
+                $productId = $item['product_id'];
+            } else {
+                // 🔹 fallback: product by SKU
+                $product = $db->table('products')
+                    ->select('id')
+                    ->where('sku', $code)
+                    ->get()->getRowArray();
+
+                if (!$product) {
+                    return $this->response->setJSON([
+                        'status'  => 'error',
+                        'message' => 'Code not found'
+                    ]);
+                }
+                $productId = $product['id'];
+            }
+
+            // 🔹 Insert tracking record
+            $trackingData = [
+                'product_id'    => $productId,
+                'tracking_code' => $code,
+                'action'        => $action,
+                'user_id'       => $userId,
+                'created_at'    => date('Y-m-d H:i:s'),
+            ];
+
+            $trackingData['warehouse_id'] = $warehouseId;
+            $db->table('product_tracking')->insert($trackingData);
+
+            // 🔹 Fetch product info with image
+            $productData = $db->table('products p')
+                ->select('p.id, p.sku, p.name, p.category, pi.url as primary_image')
+                ->join('product_images pi', 'pi.product_id = p.id AND pi.is_primary = 1', 'left')
+                ->where('p.id', $productId)
+                ->get()->getRowArray();
+
+            // 🔹 Fetch warehouse info if applicable
+
+            $warehouseName = null;
+            if ($warehouseId) {
+                $w = $db->table('warehouses')->select('name')->where('id', $warehouseId)->get()->getRowArray();
+                $warehouseName = $w['name'] ?? null;
+            }
+
+            return $this->response->setJSON([
+                'status' => 'success',
+                'message' => 'Scan saved',
+                'product' => $productData,
+                'product_id' => $productId,
+                'name' => $product['name'] ?? null,
+                'primary_image' => $product['primary_image'] ?? null,
+                'tracking_code' => $code,
+                'action' => $action,
+                'warehouse_name' => $warehouseName
+            ]);
+
+        } catch (\Exception $e) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function scan1()
+    {
+        $db = \Config\Database::connect();
+        $req = $this->request->getJSON(true);
+
+        $code   = trim($req['code'] ?? '');
+        $action = $req['action'] ?? null;
+        $userId = session()->get('uid'); // adjust depending on your auth/session
+
+        if (!$code) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Missing code']);
+        }
+
+        try {
+            $productId = null;
+
+            // 🔹 Try to match by item serial/batch
+            $builder = $db->table('items');
+            $builder->select('id, product_id');
+            $builder->where('serial_or_batch', $code);
+            $item = $builder->get()->getRowArray();
+
+            if ($item) {
+                $productId = $item['product_id'];
+            } else {
+                // 🔹 fallback: try product by SKU
+                $builder = $db->table('products');
+                $builder->select('id');
+                $builder->where('sku', $code);
+                $product = $builder->get()->getRowArray();
+
+                if (!$product) {
+                    return $this->response->setJSON([
+                        'status'  => 'error',
+                        'message' => 'Code not found'
+                    ]);
+                }
+                $productId = $product['id'];
+            }
+
+            // 🔹 Log to tracking
+            $db->table('product_tracking')->insert([
+                'product_id'    => $productId,
+                'tracking_code' => $code,
+                'action'        => $action,
+                'user_id'       => $userId,
+                'created_at'    => date('Y-m-d H:i:s'),
+            ]);
+
+            // 🔹 Fetch product details (with primary image)
+            $builder = $db->table('products p');
+            $builder->select('p.id, p.sku, p.name, p.category, pi.url as primary_image');
+            $builder->join('product_images pi', 'pi.product_id = p.id AND pi.is_primary = 1', 'left');
+            $builder->where('p.id', $productId);
+            $productData = $builder->get()->getRowArray();
+
+            if (!$productData) {
+                $productData = ['id' => $productId, 'sku' => $code, 'name' => null, 'primary_image' => null];
+            }
+
+            return $this->response->setJSON([
+                'status'   => 'success',
+                'message'  => 'Scan saved',
+                'action'   => $action,
+                'product'  => $productData,
+            ]);
+
+        } catch (\Exception $e) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+
+
     /** POST /products/{id}/images/upload  (multipart, field: files[]) */
     public function uploadImages($id = null)
     {
@@ -542,6 +744,107 @@ class ProductController extends ResourceController
         return $this->respondDeleted(['deleted'=>true]);
     }
 
+    // /** POST /products/{id}/details */
+    // public function details($id = null)
+    // {
+    //     global $conn;
+    //     if (!$id) return $this->failValidationErrors('Missing id');
+
+    //     $stmt = $conn->prepare("SELECT * FROM products WHERE id=?");
+    //     $stmt->bind_param("i",$id); $stmt->execute();
+    //     $product = $stmt->get_result()->fetch_assoc(); $stmt->close();
+    //     if (!$product) return $this->failNotFound('Product not found');
+
+    //     // Tags
+    //     $stmt = $conn->prepare("SELECT tag_text FROM products_tags WHERE product_id=? ORDER BY tag_text ASC");
+    //     $stmt->bind_param("i",$id); $stmt->execute();
+    //     $tags = array_column($stmt->get_result()->fetch_all(MYSQLI_ASSOC),'tag_text'); 
+    //     $stmt->close();
+
+    //     // Images
+    //     $stmt = $conn->prepare("SELECT id,url,is_primary FROM product_images WHERE product_id=? ORDER BY is_primary DESC, id ASC");
+    //     $stmt->bind_param("i",$id); $stmt->execute();
+    //     $images = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); 
+    //     $stmt->close();
+
+    //     // Stock counts
+    //     $stock = ['available'=>0,'reserved'=>0,'shipped'=>0,'total'=>0];
+    //     foreach (['available'=>'IN_STOCK','reserved'=>'RESERVED','shipped'=>'SHIPPED'] as $k=>$label) {
+    //         $stmt = $conn->prepare("SELECT COUNT(*) AS c FROM items WHERE product_id=? AND status=?");
+    //         $stmt->bind_param("is",$id,$label); $stmt->execute();
+    //         $stock[$k] = (int)($stmt->get_result()->fetch_assoc()['c'] ?? 0); 
+    //         $stmt->close();
+    //     }
+    //     $stock['total'] = $stock['available'] + $stock['reserved'] + $stock['shipped'];
+
+    //     // Item list
+    //     $stmt = $conn->prepare("
+    //         SELECT id, serial_or_batch AS serial, location_code, condition_label, status, acquired_at
+    //         FROM items WHERE product_id=? AND status<>'DISPOSED' ORDER BY id DESC LIMIT 200
+    //     ");
+    //     $stmt->bind_param("i",$id); $stmt->execute();
+    //     $items = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); 
+    //     $stmt->close();
+
+    //     // Events
+    //     $stmt = $conn->prepare("
+    //         SELECT id, event_type, description, actor, quantity, warehouse_name, created_at
+    //         FROM product_events WHERE product_id=? ORDER BY created_at DESC LIMIT 50
+    //     ");
+    //     $stmt->bind_param("i",$id); $stmt->execute();
+    //     $events = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); 
+    //     $stmt->close();
+
+    //     // Tracking history
+    //     $stmt = $conn->prepare("
+    //         SELECT id, tracking_code, status, location, remarks, created_at
+    //         FROM product_tracking
+    //         WHERE product_id=? ORDER BY created_at DESC LIMIT 100
+    //     ");
+    //     $stmt->bind_param("i",$id); 
+    //     $stmt->execute();
+    //     $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    //     $stmt->close();
+
+    //     // Specs
+    //     $stmt = $conn->prepare("SELECT spec_key, spec_value FROM product_specs WHERE product_id=?");
+    //     $stmt->bind_param("i",$id); $stmt->execute();
+    //     $specs = [];
+    //     foreach ($stmt->get_result()->fetch_all(MYSQLI_ASSOC) as $r) {
+    //         $specs[$r['spec_key']] = $r['spec_value'];
+    //     }
+    //     $stmt->close();
+
+    //     // Primary image fallback
+    //     $stmt = $conn->prepare("SELECT url FROM product_images WHERE product_id=? AND is_primary=1 LIMIT 1");
+    //     $stmt->bind_param("i", $id);
+    //     $stmt->execute();
+    //     $rec = $stmt->get_result()->fetch_assoc();
+    //     $stmt->close();
+
+    //     $product['primary_image'] = ($rec && !empty($rec['url']))
+    //         ? $rec['url']
+    //         : "/images/noimage.png";
+
+    //     $product['tags'] = $tags;
+
+    //     return $this->respond([
+    //         'product'  => $product,
+    //         'images'   => $images,
+    //         'tracking' => $tracking,   // ✅ now populated
+    //         'stock'    => [
+    //             'total'=>$stock['total'],
+    //             'available'=>$stock['available'],
+    //             'reserved'=>$stock['reserved'],
+    //             'shipped'=>$stock['shipped'],
+    //             'lowAlert'=>(int)($product['reorder_point'] ?? 0),
+    //         ],
+    //         'items'    => $items,
+    //         'events'   => $events,
+    //         'specs'    => $specs,
+    //     ]);
+    // }
+
     /** POST /products/{id}/details */
     public function details($id = null)
     {
@@ -591,9 +894,36 @@ class ProductController extends ResourceController
 
         $product['tags'] = $tags;
 
+        $stmt = $conn->prepare("SELECT url FROM product_images WHERE product_id=? AND is_primary=1 LIMIT 1");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $rec = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($rec && !empty($rec['url'])) {
+            $product['primary_image'] = $rec['url'];
+        } else {
+            $product['primary_image'] = "/images/noimage.png"; 
+        }
+
+        // Tracking history
+        $stmt = $conn->prepare("
+            SELECT pt.*, CONCAT(u.firstname, ' ', u.lastname) AS fullname
+            FROM product_tracking pt
+            LEFT JOIN users u ON pt.user_id = u.id
+            WHERE pt.product_id=? 
+            ORDER BY pt.created_at DESC 
+            LIMIT 100
+        ");
+        $stmt->bind_param("i", $id); 
+        $stmt->execute();
+        $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
         return $this->respond([
             'product' => $product,
             'images'  => $images,
+            'tracking' => $tracking,
             'stock'   => [
                 'total'=>$stock['total'],'available'=>$stock['available'],'reserved'=>$stock['reserved'],'shipped'=>$stock['shipped'],
                 'lowAlert'=>(int)($product['reorder_point'] ?? 0),

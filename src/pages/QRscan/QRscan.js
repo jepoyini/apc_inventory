@@ -1,269 +1,466 @@
-import React, { useState } from "react";
+// ================================================================
+// FILE: src/pages/Inventory/QRScanner.js
+// ================================================================
+import React, { useState, useEffect, useRef } from "react";
 import {
-  Card, CardHeader, CardBody,
-  Container, Row, Col,
-  Button, Input, Label, Alert, Badge, InputGroup, InputGroupText
+  Container, Row, Col, Card, CardBody, CardHeader,
+  Button, Input, Label, Badge, Nav, NavItem, NavLink,
+  TabContent, TabPane, Spinner
 } from "reactstrap";
-import BreadCrumb from "../../Components/Common/BreadCrumb";
+import classnames from "classnames";
+import {
+  RiQrCodeLine, RiCameraLine, RiUpload2Line,
+  RiCheckLine, RiCloseLine
+} from "react-icons/ri";
+import { APIClient } from "../../helpers/api_helper";
+import { toast } from "react-toastify";
+import { api } from "../../config";
+import { useNavigate } from "react-router-dom";
+import QrReader from "react-qr-scanner";
 import Swal from "sweetalert2";
 
-const demoProduct = {
-  qrCode: "QR001APF747",
-  name: "Premium Award Plaque",
-  sku: "APF747",
-  quantity: 150,
-  category: "Awards",
-  warehouse: "Main Warehouse",
-  description: "High-quality crystal award plaque with custom engraving",
-  status: "In Stock", // In Stock | In Transit | Disposed
-};
-
-const getQRCodeActions = (status) => {
-  switch (status) {
-    case "In Stock":
-      return ["Ship", "Dispose"];
-    case "In Transit":
-      return ["Receive"];
-    default:
-      return [];
-  }
-};
-
-const statusBadgeClass = (status) => {
-  if (status === "In Stock") return "badge bg-success-subtle text-success";
-  if (status === "In Transit") return "badge bg-warning-subtle text-warning";
-  if (status === "Disposed") return "badge bg-danger-subtle text-danger";
-  return "badge bg-secondary-subtle text-secondary";
-};
-
 const QRScanner = () => {
-  document.title = "QR Code Scanner | APC Inventory";
+  const navigate = useNavigate();
+  const apipost = new APIClient();
+  const [activeTab, setActiveTab] = useState("camera");
+  const [scanHistory, setScanHistory] = useState([]);
+  const [batchScans, setBatchScans] = useState([]);
+  const [selectedAction, setSelectedAction] = useState("none");
+  const [loading, setLoading] = useState(false);
+  const manualInputRef = useRef(null);
+  const batchInputRef = useRef(null);
+  const obj = JSON.parse(sessionStorage.getItem("authUser"));
+  const [selectedWarehouse, setSelectedWarehouse] = useState("");
+  const [warehouses, setWarehouses] = useState([]);
+  const [cameraActive, setCameraActive] = useState(false);
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);  
 
-  const [qrCode, setQrCode] = useState("");
-  const [isScanning, setIsScanning] = useState(false);
-  const [result, setResult] = useState(null); // { success, product?, message?, actions? }
-  const [selectedAction, setSelectedAction] = useState("");
+  const toggleTab = (tab) => {
+    if (activeTab !== tab) setActiveTab(tab);
+  };
 
-  const handleScan = () => {
-    const code = String(qrCode || "").trim();
-    if (!code) return;
+  const prefixUrl = (url) => {
+    const base = api?.IMAGE_URL ? api.IMAGE_URL.replace(/\/$/, "") : "";
+    if (!url) return base + "/images/noimage.png";
+    if (url.startsWith("http")) return url;
+    return base + "/" + url.replace(/^\//, "");
+  };
 
-    // Demo lookup
-    if (code === demoProduct.qrCode) {
-      const actions = getQRCodeActions(demoProduct.status);
-      setResult({ success: true, product: { ...demoProduct }, actions });
-    } else {
-      setResult({ success: false, message: "Product not found. Please check the QR code." });
+  const sendToServer = async (code) => {
+    debugger; 
+    setLoading(true);
+    try {
+        const payload = {
+          code,
+          action: selectedAction !== "none" ? selectedAction : null,
+          warehouse_id: selectedWarehouse ,
+          uid: obj.id,
+        };
+
+      const res = await apipost.post(`/products/scan`, payload);
+
+      const entry = {
+        code,
+        timestamp: new Date().toLocaleString(),
+        success: res?.status === "success",
+        action: payload.action,
+        product_id: res.product.id,
+        name: res.product.name,
+        image: res.product.primary_image,
+        warehouse_name: res.warehouse_name,
+      };
+      setScanHistory((prev) => [entry, ...prev].slice(0, 100));
+
+
+      if (entry.success) {
+        toast.success(`Scan saved: ${entry.name || code}`);
+      } else {
+        toast.error(`Failed to save: ${code}`);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Error connecting to server");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const simulateCamera = async () => {
-    setIsScanning(true);
-    // Simulate camera delay and auto-fill the demo code
-    setTimeout(() => {
-      setQrCode(demoProduct.qrCode);
-      setIsScanning(false);
-    }, 1600);
+
+  useEffect(() => {
+    const fetchWarehouses = async () => {
+
+      try {
+        const res = await apipost.post("/warehouses", {}); // <-- make sure you have this API
+        setWarehouses(res.warehouses || []);
+      } catch (e) {
+        console.error("Failed to fetch warehouses", e);
+      }
+    };
+
+  fetchWarehouses();
+}, []);
+
+  // ✅ Focus input for manual scans
+  useEffect(() => {
+    if (manualInputRef.current && activeTab === "manual") {
+      manualInputRef.current.focus();
+    }
+  }, [activeTab]);
+
+  const handleManualKey = (code) => {
+    if (!code) return;
+    sendToServer(code);
+
   };
 
-  const handleAction = () => {
-    if (!result?.success || !result.product || !selectedAction) return;
-
-    const p = { ...result.product };
-
-    if (selectedAction === "Ship") p.status = "In Transit";
-    if (selectedAction === "Receive") p.status = "In Stock";
-    if (selectedAction === "Dispose") p.status = "Disposed";
-
-    Swal.fire({
-      icon: "success",
-      title: "Action Completed",
-      text:
-        selectedAction === "Ship"
-          ? `Product "${p.name}" marked as shipped (now In Transit).`
-          : selectedAction === "Receive"
-          ? `Product "${p.name}" received and now In Stock.`
-          : `Product "${p.name}" has been disposed and removed from active inventory.`,
-      confirmButtonText: "OK",
-    });
-
-    setResult({ success: true, product: p, actions: getQRCodeActions(p.status) });
-    setSelectedAction("");
+  const handleBatchAdd = (code) => {
+    if (!code) return;
+    setBatchScans((prev) => [...prev, code]);
   };
+
+  const handleBatchCommit = async () => {
+    for (const code of batchScans) {
+      await sendToServer(code);
+    }
+    setBatchScans([]);
+  };
+
+  const handleCameraScan = (result) => {
+    if (result && result.text) {
+      sendToServer(result.text);
+      return;
+      
+      if (isMobile) {
+        // On phone → preview first
+        Swal.fire({
+          title: "Scanned Code",
+          text: `SKU / Code: ${result.text}`,
+          icon: "info",
+          showCancelButton: true,
+          confirmButtonText: "Submit to Server",
+          cancelButtonText: "Cancel"
+        }).then((res) => {
+          if (res.isConfirmed) sendToServer(result.text);
+        });
+      } else {
+        // On desktop → send immediately
+        sendToServer(result.text);
+      }
+    }
+  };
+
+  const handleCameraError = (err) => {
+    console.error("Camera error", err);
+    toast.error("Camera access error");
+  };
+
 
   return (
     <div className="page-content">
       <Container fluid>
-        <BreadCrumb title="QR Code Scanner" pageTitle="Dashboard" url="/dashboard" />
-        <p className="text-muted mb-3">
-          Scan or enter QR codes to track and manage products
-        </p>
+        <Row>
+          <Col>
+            <Card>
 
-        {/* Scanner */}
-        <Card className="mb-3">
-          <CardHeader>
-            <h6 className="mb-0"><i className="ri-scan-2-line me-2"></i>Scan Product QR Code</h6>
-          </CardHeader>
-          <CardBody>
-            {/* Camera area */}
-            <div
-              className="rounded d-flex align-items-center justify-content-center mb-3"
-              style={{
-                height: 220,
-                border: "2px dashed var(--vz-border-color, #e9ecef)",
-                background: "rgba(0,0,0,0.01)",
-              }}
-            >
-              {!isScanning ? (
-                <div className="text-center">
-                  <i className="ri-camera-3-line text-muted" style={{ fontSize: 48 }}></i>
-                  <p className="text-muted mb-2">Position QR code within the frame</p>
-                  <Button color="dark" onClick={simulateCamera}>
-                    <i className="ri-camera-line me-1"></i> Start Camera Scan
-                  </Button>
-                </div>
-              ) : (
-                <div className="text-center w-100 px-5">
-                  <div className="mb-2">
-                    <i className="ri-camera-lens-line text-primary" style={{ fontSize: 48 }}></i>
-                  </div>
-                  <div className="text-primary fw-medium mb-2">Scanning...</div>
-                  <div className="progress" role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100">
-                    <div className="progress-bar progress-bar-striped progress-bar-animated" style={{ width: "60%" }}></div>
-                  </div>
-                </div>
-              )}
-            </div>
+              {/* Header: only title */}
+              <CardHeader>
+                <h5 className="mb-0 d-flex align-items-center">
+                  <RiQrCodeLine className="me-2" /> QR Scanner
+                </h5>
+              </CardHeader>
 
-            {/* Manual entry */}
-            <Label className="mb-1">Or enter QR code manually:</Label>
-            <InputGroup className="mb-2">
-              <Input
-                value={qrCode}
-                onChange={(e) => setQrCode(e.target.value)}
-                placeholder="Enter QR code (e.g., QR001APF747)"
-              />
-              <Button color="secondary" onClick={handleScan} disabled={!qrCode.trim()}>
-                Scan
-              </Button>
-            </InputGroup>
+              <CardBody>
 
-            <Alert color="light" className="d-flex align-items-center gap-2 mb-0">
-              <i className="ri-coupon-2-line"></i>
-              <div>
-                <strong>Demo:</strong> Try scanning <code>{demoProduct.qrCode}</code> to see the system in action!
-              </div>
-            </Alert>
-          </CardBody>
-        </Card>
-
-        {/* Scan Result */}
-        {result && (
-          <Card className="mb-3">
-            <CardHeader>
-              <h6 className="mb-0">
-                {result.success ? (
-                  <i className="ri-check-fill text-success me-2"></i>
-                ) : (
-                  <i className="ri-alert-line text-danger me-2"></i>
-                )}
-                Scan Result
-              </h6>
-            </CardHeader>
-            <CardBody>
-              {result.success && result.product ? (
-                <>
-                  <div className="p-3 rounded border bg-success-subtle mb-3">
-                    <div className="d-flex justify-content-between align-items-start mb-2">
-                      <h6 className="mb-0 text-success">{result.product.name}</h6>
-                      <span className={statusBadgeClass(result.product.status)}>{result.product.status}</span>
+                {loading && (
+                  <div
+                    className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+                    style={{ backgroundColor: "rgba(0,0,0,0.3)", zIndex: 1050 }}
+                  >
+                    <div className="bg-white rounded shadow p-4 d-flex flex-column align-items-center">
+                      <Spinner size="lg" color="primary" />
+                      <div className="mt-2 fw-semibold text-dark">Saving scan...</div>
                     </div>
+                  </div>
+                )}
 
-                    <Row className="text-muted small">
-                      <Col md={6} className="mb-1">
-                        <span>SKU:</span> <span className="fw-medium ms-1">{result.product.sku}</span>
-                      </Col>
-                      <Col md={6} className="mb-1">
-                        <span>Quantity:</span> <span className="fw-medium ms-1">{result.product.quantity}</span>
-                      </Col>
-                      <Col md={6} className="mb-1">
-                        <span>Category:</span> <span className="ms-1">{result.product.category}</span>
-                      </Col>
-                      <Col md={6} className="mb-1">
-                        <span>Warehouse:</span> <span className="ms-1">{result.product.warehouse}</span>
+                {/* Actions Row */}
+                <Row className="mb-4">
+                  <Col xs={12} md={4}>
+                    <div className="d-flex flex-wrap align-items-center gap-2">
+                      <Label className="mb-0 fw-semibold">Action:</Label>
+
+                      <Input
+                        type="select"
+                        value={selectedAction}
+                        onChange={(e) => setSelectedAction(e.target.value)}
+                      >
+                        <option value="none">None</option>
+                        <option value="receive">Mark as Received</option>
+                        <option value="ship">Mark as Shipped</option>
+                        <option value="move">Move to Location</option>
+                      </Input>
+
+                      {(selectedAction === "receive" || selectedAction === "move") && (
+                        <Input
+                          type="select"
+                          value={selectedWarehouse}
+                          onChange={(e) => setSelectedWarehouse(e.target.value)}
+                        >
+                          <option value="">Select Warehouse</option>
+                          {warehouses.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.name}
+                            </option>
+                          ))}
+                        </Input>
+                      )}
+
+                      <Button
+                        color="success"
+                        onClick={() => {
+                          if (activeTab === "manual") {
+                            setTimeout(() => manualInputRef.current?.focus(), 100);
+                          } else if (activeTab === "batch") {
+                            setTimeout(() => batchInputRef.current?.focus(), 100);
+                          } else {
+                            toggleTab("manual");
+                            setTimeout(() => manualInputRef.current?.focus(), 150);
+                          }
+                        }}
+                      >
+                        <i className="ri-play-line me-1"></i> Start Scan
+                      </Button>
+                    </div>
+                  </Col>
+                </Row>
+
+                {/* Tabs */}
+                <Nav tabs>
+                  <NavItem>
+                    <NavLink
+                      className={classnames({ active: activeTab === "camera" })}
+                      onClick={() => toggleTab("camera")}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <RiCameraLine className="me-1" /> Camera
+                    </NavLink>
+                  </NavItem>
+                  <NavItem>
+                    <NavLink
+                      className={classnames({ active: activeTab === "manual" })}
+                      onClick={() => toggleTab("manual")}
+                      style={{ cursor: "pointer" }}
+                    >
+                     <RiQrCodeLine className="me-1" />  
+                      Keyboard / Scanner
+                    </NavLink>
+                  </NavItem>                  
+                  <NavItem>
+                    <NavLink
+                      className={classnames({ active: activeTab === "batch" })}
+                      onClick={() => toggleTab("batch")}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <RiUpload2Line className="me-1" /> Batch
+                    </NavLink>
+                  </NavItem>
+
+                </Nav>
+
+                <TabContent activeTab={activeTab} className="pt-3">
+
+                    {/* Camera Tab */}
+                    <TabPane tabId="camera">
+                      <div className="text-center">
+                        <Card className="p-3">
+                          <CardBody>
+                            <h6>Live Camera Scan</h6>
+                            <p className="text-muted small">
+                              Position your QR code in front of the camera.
+                            </p>
+
+                            {/* Toggle button */}
+                            <Button
+                              color={cameraActive ? "danger" : "success"}
+                              className="mb-3"
+                              onClick={() => setCameraActive(!cameraActive)}
+                            >
+                              {cameraActive ? "Stop Camera" : "Start Camera"}
+                            </Button>
+
+                            <div
+                              className="bg-light border rounded d-flex align-items-center justify-content-center"
+                              style={{ height: 300 }}
+                            >
+                              {cameraActive && activeTab === "camera" ? (
+                                <QrReader
+                                  delay={300}
+                                  onError={handleCameraError}
+                                  onScan={handleCameraScan}
+                                  style={{ width: "100%" }}
+                                />
+                              ) : (
+                                <RiCameraLine size={48} className="text-muted" />
+                              )}
+                            </div>
+                          </CardBody>
+                        </Card>
+                      </div>
+                    </TabPane>
+
+
+
+
+                  {/* Batch Tab */}
+                  <TabPane tabId="batch">
+                    <Row>
+                      <Col md={12}>
+                        <h6>Batch Scan Session</h6>
+                        <Input
+                          innerRef={batchInputRef}   // ✅ new ref
+                          placeholder="Scan or type a code..."
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && e.target.value.trim()) {
+                              handleBatchAdd(e.target.value.trim());
+                              e.target.value = "";
+                            }
+                          }}
+                        />
+                        <div className="mt-3">
+                          {batchScans.length === 0 ? (
+                            <p className="text-muted">No codes added</p>
+                          ) : (
+                            <ul className="list-group">
+                              {batchScans.map((code, idx) => (
+                                <li
+                                  key={idx}
+                                  className="list-group-item d-flex justify-content-between align-items-center"
+                                >
+                                  <span className="font-monospace">{code}</span>
+                                  <Badge color="info">Pending</Badge>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        {batchScans.length > 0 && (
+                          <Button
+                            color="success"
+                            className="mt-3"
+                            onClick={handleBatchCommit}
+                          >
+                            <RiCheckLine className="me-1" /> Commit Batch
+                          </Button>
+                        )}
                       </Col>
                     </Row>
-                    <p className="text-muted small mb-0 mt-2">{result.product.description}</p>
+                  </TabPane>
+
+                  {/* Manual / Keyboard Tab */}
+
+                  <TabPane tabId="manual">
+                    <Row>
+                      <Col md={3}>
+                        <h6>Keyboard / Scanner Input</h6>
+                        <Input
+                          innerRef={manualInputRef}   // ✅ This must exist
+                          placeholder="Scan here using barcode scanner..."
+                         onKeyDown={(e) => {
+                            if (e.key === "Enter" && e.target.value.trim()) {
+                              handleManualKey(e.target.value.trim());
+                              e.target.value = "";
+                            }
+                          }}
+
+                        />
+                        <small className="text-muted">
+                          Works with physical barcode/QR scanners (auto-fills + Enter).
+                        </small>
+                      </Col>
+                    </Row>
+                  </TabPane>
+
+
+
+                </TabContent>
+
+                {/* History Section */}
+                <hr className="my-4" />
+                <h6>Scan History</h6>
+                {scanHistory.length === 0 ? (
+                  <p className="text-muted">No scans yet</p>
+                ) : (
+                  <div
+                    className="list-group"
+                    style={{ maxHeight: "300px", overflowY: "auto" }}
+                  >
+                    {scanHistory.map((scan, idx) => (
+                      <div
+                        key={idx}
+                        className="list-group-item d-flex align-items-center"
+                      >
+                        {/* Thumbnail */}
+                        {scan.image && (
+                          <img
+                            src={prefixUrl(scan.image)}
+                            alt={scan.name || scan.code}
+                            className="me-3 rounded border"
+                            style={{
+                              width: "50px",
+                              height: "40px",
+                              objectFit: "cover",
+                            }}
+                          />
+                        )}
+
+                        {/* Details */}
+                        <div className="flex-grow-1">
+                          <span
+                            className="fw-bold text-primary"
+                            style={{ cursor: "pointer" }}
+                            onClick={() => navigate(`/products/${scan.product_id}`)}
+                          >
+                            {scan.name || scan.code}
+                          </span>
+                          <div className="small text-muted">
+                            {scan.code} • {scan.timestamp}
+                            {scan.action === "receive" && scan.warehouse_name && (
+                              <> • Received at {scan.warehouse_name}</>
+                            )}
+                            {scan.action === "move" && scan.warehouse_name && (
+                              <> • Moved to {scan.warehouse_name}</>
+                            )}
+                            {scan.action === "ship" && (
+                              <> • Marked as Shipped</>
+                            )}
+                          </div>
+                        </div>
+
+
+
+
+                        {/* Badges */}
+                        <div>
+                          {scan.action && (
+                            <Badge color="info" pill className="me-2">
+                              {scan.action}
+                            </Badge>
+                          )}
+                          <Badge
+                            color={scan.success ? "success" : "danger"}
+                            pill
+                          >
+                            {scan.success ? <RiCheckLine /> : <RiCloseLine />}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-
-                  {/* Actions */}
-                  <div className="mb-2">
-                    <Label className="mb-1">Select Action:</Label>
-                    <Input
-                      type="select"
-                      value={selectedAction}
-                      onChange={(e) => setSelectedAction(e.target.value)}
-                    >
-                      <option value="">Choose an action</option>
-                      {result.actions?.map((a) => (
-                        <option key={a} value={a}>{a} Product</option>
-                      ))}
-                    </Input>
-                  </div>
-                  <Button color="secondary" disabled={!selectedAction} onClick={handleAction}>
-                    Execute Action
-                  </Button>
-                </>
-              ) : (
-                <Alert color="danger" className="mb-0">
-                  {result.message}
-                </Alert>
-              )}
-            </CardBody>
-          </Card>
-        )}
-
-        {/* Workflow Guide */}
-        <Card>
-          <CardHeader>
-            <h6 className="mb-0">Workflow Guide</h6>
-          </CardHeader>
-          <CardBody>
-            <div className="text-muted small">
-              <div className="d-flex align-items-start gap-3 mb-3">
-                <span className="badge rounded-pill bg-primary-subtle text-primary fw-semibold px-3 py-2">1</span>
-                <div>
-                  <div className="fw-medium text-dark">Production Complete</div>
-                  <div>Product added with auto-generated QR code</div>
-                </div>
-              </div>
-
-              <div className="d-flex align-items-start gap-3 mb-3">
-                <span className="badge rounded-pill bg-warning-subtle text-warning fw-semibold px-3 py-2">2</span>
-                <div>
-                  <div className="fw-medium text-dark">Ship to Overseas</div>
-                  <div>QR scan updates status to "In Transit"</div>
-                </div>
-              </div>
-
-              <div className="d-flex align-items-start gap-3 mb-3">
-                <span className="badge rounded-pill bg-success-subtle text-success fw-semibold px-3 py-2">3</span>
-                <div>
-                  <div className="fw-medium text-dark">Received at Destination</div>
-                  <div>QR scan confirms arrival and updates inventory</div>
-                </div>
-              </div>
-
-              <div className="d-flex align-items-start gap-3">
-                <span className="badge rounded-pill bg-danger-subtle text-danger fw-semibold px-3 py-2">4</span>
-                <div>
-                  <div className="fw-medium text-dark">Product Disposed</div>
-                  <div>Final scan removes item from active inventory</div>
-                </div>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+                )}
+              </CardBody>
+            </Card>
+          </Col>
+        </Row>
       </Container>
     </div>
   );

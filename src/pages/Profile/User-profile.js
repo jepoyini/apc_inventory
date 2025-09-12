@@ -1,169 +1,368 @@
 import React, { useState, useEffect } from "react";
-import { isEmpty } from "lodash";
-
 import {
-  Container,
-  Row,
-  Col,
-  Card,
-  Alert,
-  CardBody,
   Button,
-  Label,
-  Input,
-  FormFeedback,
+  Card,
+  CardBody,
+  CardHeader,
+  Col,
+  Container,
   Form,
+  Input,
+  Label,
+  Nav,
+  NavItem,
+  NavLink,
+  Row,
+  TabContent,
+  TabPane,
+  Spinner,
+  Badge,
 } from "reactstrap";
+import classnames from "classnames";
+import Swal from "sweetalert2";
+import { APIClient } from "../../helpers/api_helper";
+import { api } from "../../config";
 
-// Formik Validation
-import * as Yup from "yup";
-import { useFormik } from "formik";
+const Settings = () => {
+  const apipost = new APIClient();
+  const [pageloading, setPageLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("1");
 
-//redux
-import { useSelector, useDispatch } from "react-redux";
-
-import avatar from "../../assets/images/users/avatar-1.jpg";
-// actions
-import { editProfile, resetProfileFlag } from "../../slices/thunks";
-import { createSelector } from "reselect";
-
-const UserProfile = () => {
-  const dispatch = useDispatch();
-
-  const [email, setemail] = useState("admin@gmail.com");
-  const [idx, setidx] = useState("1");
-
-  const [userName, setUserName] = useState("Admin");
-
-  const selectLayoutState = (state) => state.Profile;
-  const userprofileData = createSelector(
-    selectLayoutState,
-    (state) => ({
-      user: state.user,
-      success: state.success,
-      error: state.error
-    })
-  );
-  // Inside your component
-  const {
-    user, success, error 
-  } = useSelector(userprofileData);
-
-  useEffect(() => {
-    if (sessionStorage.getItem("authUser")) {
-      const obj = JSON.parse(sessionStorage.getItem("authUser"));
-
-      if (!isEmpty(user)) {
-        obj.first_name = user.first_name;
-        sessionStorage.removeItem("authUser");
-        sessionStorage.setItem("authUser", JSON.stringify(obj));
-      }
-
-      setUserName(obj.first_name);
-      setemail(obj.email);
-      setidx(obj._id || "1");
-
-      setTimeout(() => {
-        dispatch(resetProfileFlag());
-      }, 3000);
-    }
-  }, [dispatch, user]);
-
-
-
-  const validation = useFormik({
-    // enableReinitialize : use this flag when initial values needs to be changed
-    enableReinitialize: true,
-
-    initialValues: {
-      first_name: userName || 'Admin',
-      idx: idx || '',
-    },
-    validationSchema: Yup.object({
-      first_name: Yup.string().required("Please Enter Your UserName"),
-    }),
-    onSubmit: (values) => {
-      dispatch(editProfile(values));
-    }
+  const [user, setUser] = useState({
+    id: "",
+    username: "",
+    firstname: "",
+    lastname: "",
+    email: "",
+    phone: "",
+    address: "",
+    city: "",
+    country: "",
+    zipcode: "",
+    status: "",
+    avatar: null, // backend path or null
+    avatarFile: null, // file object for preview
   });
 
-  document.title = "Profile | APC Inventory";
-  return (
-    <React.Fragment>
-      <div className="page-content">
-        <Container fluid>
-          <Row>
-            <Col lg="12">
-              {error && error ? <Alert color="danger">{error}</Alert> : null}
-              {success ? <Alert color="success">Username Updated To {userName}</Alert> : null}
+  const [formData, setFormData] = useState({
+    oldPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
 
-              <Card>
+  const countryList = [
+    "United States", "United Kingdom", "Philippines", "Canada", "Australia",
+    "Germany", "France", "Japan", "Singapore", "India", "China", "Brazil",
+    "South Africa", "Mexico", "Italy", "Spain", "Vietnam", "Thailand",
+    "Malaysia", "Netherlands", "Sweden", "Norway", "Switzerland", "Others"
+  ];
+
+  // ✅ Prefix for avatar & images
+  const prefixUrl = (url) => {
+    const base = api?.IMAGE_URL ? api.IMAGE_URL.replace(/\/$/, "") : "";
+    if (!url) return base + "/images/noavatar.png";
+    if (url.startsWith("http")) return url;
+    return base + "/" + url.replace(/^\//, "");
+  };
+
+  // ================================
+  // Load user profile
+  // ================================
+  const fetchUser = async () => {
+    try {
+      debugger; 
+      const obj = JSON.parse(sessionStorage.getItem("authUser"));
+      const r = await apipost.post("/users/details", { id: obj.id });
+
+      if (r?.user) {
+        setUser((prev) => ({
+          ...prev,
+          ...r.user,
+          avatar: r.user.avatar,
+          avatarFile: null, // reset preview
+        }));
+      }
+      setPageLoading(false);
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      setPageLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUser();
+  }, []);
+
+  // ================================
+  // Handlers
+  // ================================
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setUser((prevUser) => ({ ...prevUser, [name]: value }));
+  };
+
+  const handleAvatarChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setUser((prevUser) => ({
+        ...prevUser,
+        avatarFile: file, // keep file for upload
+      }));
+    }
+  };
+
+  const handleInputPasswordChange = (e) => {
+    const { id, value } = e.target;
+    setFormData((prev) => ({ ...prev, [id]: value }));
+  };
+
+  // ================================
+  // Save profile
+  // ================================
+  const updateProfile = async () => {
+    setLoading(true);
+    try {
+      const fd = new FormData();
+      Object.keys(user).forEach((k) => {
+        if (user[k] !== null && user[k] !== "") {
+          if (k === "avatarFile" && user.avatarFile) {
+            fd.append("avatar", user.avatarFile);
+          } else if (k !== "avatarFile") {
+            fd.append(k, user[k]);
+          }
+        }
+      });
+
+      const response = await apipost.post("/users/save", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      Swal.fire({
+        icon: response.status === "success" ? "success" : "error",
+        text: response.message || "Profile updated",
+        confirmButtonText: "OK",
+      });
+
+      if (response.status === "success") {
+        fetchUser(); // reload from backend
+      }
+    } catch (error) {
+      Swal.fire({ icon: "error", text: "Error while saving!", confirmButtonText: "OK" });
+    }
+    setLoading(false);
+  };
+
+  // ================================
+  // Change password
+  // ================================
+  const validatePasswords = async () => {
+    const { oldPassword, newPassword, confirmPassword } = formData;
+
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      Swal.fire({ icon: "error", text: "All fields are required.", confirmButtonText: "OK" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Swal.fire({
+        icon: "error",
+        text: "New password and confirm password do not match.",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      debugger; 
+      const response = await apipost.post("/users/changepass", {
+        id: user.id,
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      });
+
+      Swal.fire({
+        icon: response.status === "success" ? "success" : "error",
+        text: response.message || "Password updated",
+        confirmButtonText: "OK",
+      });
+
+      setFormData({ oldPassword: "", newPassword: "", confirmPassword: "" });
+    } catch (error) {
+      Swal.fire({ icon: "error", text: "Error while changing password!", confirmButtonText: "OK" });
+    }
+    setLoading(false);
+  };
+
+  const tabChange = (tab) => {
+    if (activeTab !== tab) setActiveTab(tab);
+  };
+
+  return (
+    <div className="page-content">
+      {pageloading ? (
+        <Container fluid>
+          <div className="d-flex justify-content-center align-items-center" style={{ minHeight: "300px" }}>
+            <Spinner color="primary" style={{ width: "3rem", height: "3rem" }} />
+          </div>
+        </Container>
+      ) : (
+        <Container fluid>
+          {/* Profile Header */}
+          <Row className="mb-4">
+            <Col lg="9">
+              <Card className="shadow-sm border-0">
                 <CardBody>
-                  <div className="d-flex">
-                    <div className="mx-3">
+                  <Row className="align-items-center">
+                    {/* Avatar */}
+                    <Col md="4" className="text-center">
                       <img
-                        src={avatar}
-                        alt=""
-                        className="avatar-md rounded-circle img-thumbnail"
+                        src={
+                          user.avatarFile
+                            ? URL.createObjectURL(user.avatarFile) // ✅ show preview if file selected
+                            : prefixUrl(user.avatar)               // ✅ fallback to server path
+                        }
+                        alt="User Avatar"
+                        className="rounded-circle shadow-sm mb-2"
+                        style={{ objectFit: "cover", width: "120px", height: "120px" }}
                       />
-                    </div>
-                    <div className="flex-grow-1 align-self-center">
-                      <div className="text-muted">
-                        <h5>{userName || "Admin"}</h5>
-                        <p className="mb-1">Email Id : {email}</p>
-                        <p className="mb-0">Id No : #{idx}</p>
-                      </div>
-                    </div>
-                  </div>
+                      <Input type="file" accept="image/*" onChange={handleAvatarChange} />
+                     
+
+                    </Col>
+                    {/* Info */}
+                    <Col md="8">
+                     <h5 className="mt-3">{user.firstname} {user.lastname}</h5>
+                      <p className="text-muted d-inline-flex align-items-center" style={{ gap: "10px" }}>
+                        @{user.username}
+                        <Badge color={user.status === "active" ? "success" : "danger"} pill>
+                          {user.status}
+                        </Badge>
+                      </p>                    
+                      <p><i className="ri-mail-line me-1"></i> {user.email}</p>
+                      <p><i className="ri-phone-line me-1"></i> {user.phone}</p>
+                      <p>
+                        <i className="ri-map-pin-line me-1"></i>
+                        {user.address}, {user.city}, {user.country} {user.zipcode}
+                      </p>
+                    </Col>
+                  </Row>
                 </CardBody>
               </Card>
             </Col>
           </Row>
 
-          <h4 className="card-title mb-4">Change User Name</h4>
+          {/* Tabs */}
+          <Row>
+            <Col xxl={9}>
+              <Card>
+                <CardHeader>
+                  <Nav className="nav-tabs-custom rounded card-header-tabs border-bottom-0">
+                    <NavItem>
+                      <NavLink
+                        to="#"
+                        className={classnames({ active: activeTab === "1" })}
+                        onClick={() => tabChange("1")}
+                      >
+                        Account Details
+                      </NavLink>
+                    </NavItem>
+                    <NavItem>
+                      <NavLink
+                        to="#"
+                        className={classnames({ active: activeTab === "2" })}
+                        onClick={() => tabChange("2")}
+                      >
+                        Change Password
+                      </NavLink>
+                    </NavItem>
+                  </Nav>
+                </CardHeader>
+                <CardBody className="p-4">
+                  <TabContent activeTab={activeTab}>
+                    {/* Account Details */}
+                    <TabPane tabId="1">
+                      <Form>
+                        <Row className="g-3">
+                          <Col lg={6}>
+                            <Label>First Name</Label>
+                            <Input type="text" name="firstname" value={user.firstname || ""} onChange={handleInputChange} />
+                          </Col>
+                          <Col lg={6}>
+                            <Label>Last Name</Label>
+                            <Input type="text" name="lastname" value={user.lastname || ""} onChange={handleInputChange} />
+                          </Col>
+                          <Col lg={6}>
+                            <Label>Phone</Label>
+                            <Input type="text" name="phone" value={user.phone || ""} onChange={handleInputChange} />
+                          </Col>
+                          <Col lg={6}>
+                            <Label>Email</Label>
+                            <Input type="email" name="email" value={user.email || ""} onChange={handleInputChange} />
+                          </Col>
+                          <Col lg={12}>
+                            <Label>Address</Label>
+                            <Input type="text" name="address" value={user.address || ""} onChange={handleInputChange} />
+                          </Col>
+                          <Col lg={4}>
+                            <Label>City</Label>
+                            <Input type="text" name="city" value={user.city || ""} onChange={handleInputChange} />
+                          </Col>
+                          <Col lg={4}>
+                            <Label>Country</Label>
+                            <Input type="select" name="country" value={user.country || ""} onChange={handleInputChange}>
+                              <option value="">Select Country</option>
+                              {countryList.map((c, idx) => (
+                                <option key={idx} value={c}>{c}</option>
+                              ))}
+                            </Input>
+                          </Col>
+                          <Col lg={4}>
+                            <Label>Zipcode</Label>
+                            <Input type="text" name="zipcode" value={user.zipcode || ""} onChange={handleInputChange} />
+                          </Col>
+                          <Col lg={12} className="mt-3">
+                            <Button color="warning" onClick={updateProfile} disabled={loading}>
+                              {loading ? <Spinner size="sm" /> : "Update Profile"}
+                            </Button>
+                          </Col>
+                        </Row>
+                      </Form>
+                    </TabPane>
 
-          <Card>
-            <CardBody>
-              <Form
-                className="form-horizontal"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  validation.handleSubmit();
-                  return false;
-                }}
-              >
-                <div className="form-group">
-                  <Label className="form-label">User Name</Label>
-                  <Input
-                    name="first_name"
-                    // value={name}
-                    className="form-control"
-                    placeholder="Enter User Name"
-                    type="text"
-                    onChange={validation.handleChange}
-                    onBlur={validation.handleBlur}
-                    value={validation.values.first_name || ""}
-                    invalid={
-                      validation.touched.first_name && validation.errors.first_name ? true : false
-                    }
-                  />
-                  {validation.touched.first_name && validation.errors.first_name ? (
-                    <FormFeedback type="invalid">{validation.errors.first_name}</FormFeedback>
-                  ) : null}
-                  <Input name="idx" value={idx} type="hidden" />
-                </div>
-                <div className="text-center mt-4">
-                  <Button type="submit" color="danger">
-                    Update User Name
-                  </Button>
-                </div>
-              </Form>
-            </CardBody>
-          </Card>
+                    {/* Change Password */}
+                    <TabPane tabId="2">
+                      <Form>
+                        <Row className="g-3">
+                          <Col lg={4}>
+                            <Label>Old Password</Label>
+                            <Input type="password" id="oldPassword" value={formData.oldPassword} onChange={handleInputPasswordChange} />
+                          </Col>
+                          <Col lg={4}>
+                            <Label>New Password</Label>
+                            <Input type="password" id="newPassword" value={formData.newPassword} onChange={handleInputPasswordChange} />
+                          </Col>
+                          <Col lg={4}>
+                            <Label>Confirm Password</Label>
+                            <Input type="password" id="confirmPassword" value={formData.confirmPassword} onChange={handleInputPasswordChange} />
+                          </Col>
+                          <Col lg={12} className="mt-3">
+                            <Button color="warning" onClick={validatePasswords} disabled={loading}>
+                              {loading ? <Spinner size="sm" /> : "Update Password"}
+                            </Button>
+                          </Col>
+                        </Row>
+                      </Form>
+                    </TabPane>
+                  </TabContent>
+                </CardBody>
+              </Card>
+            </Col>
+          </Row>
         </Container>
-      </div>
-    </React.Fragment>
+      )}
+    </div>
   );
 };
 
-export default UserProfile;
+export default Settings;

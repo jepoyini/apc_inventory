@@ -34,12 +34,10 @@ class AuthController extends ResourceController
             'firstname'     => $this->request->getVar('firstname'),
             'lastname'     => $this->request->getVar('lastname'),
             'email'    => $this->request->getVar('email'),
-            'sponsor_id'    => $this->request->getVar('sponsor_id'),
-            'signup_sponsor_id' => $this->request->getVar('sponsor_id'),
-            'rank' => 'pioneer',
             'password' => password_hash($this->request->getVar('password'), PASSWORD_DEFAULT),
             'date_created' => date('Y-m-d H:i:s') ,
-            'status' => 'holding',
+            'status' => 'active',
+            'role_id' => 3,
             'register_ip_address' => $ip,
             'register_ip_location' => $ip_location
         ];
@@ -107,11 +105,12 @@ class AuthController extends ResourceController
 
             $csrf = Logged_User($user['id']);
 
-            if ($user['is_admin'])
+            if ($user['role_id'] == 1)
                 $role= "Admin";
-            else
-                $role= "Member";
-
+            else if ($user['role_id'] == 2)
+                $role= "Manager";
+            else if ($user['role_id'] == 3)
+                $role= "Staff";
 
 
             $sponsorName = !empty($user['sponsor_name']) && !empty($user['sponsor_id'])
@@ -127,19 +126,15 @@ class AuthController extends ResourceController
                 'sponsor_name'     => $sponsorName,
                 'sponsor_id' => $user['sponsor_id'],
                 'email'    => $user['email'],
-                'rank' => $user['rank'],
+                'rank' =>$role,
                 'role'=> $role,
                 'is_admin'=>$user['is_admin'],
                 'date_created' => $user['date_created'],
+                'avatar' => $user['avatar'],
                 'csrf_token' => $csrf
             ];
             $session->set($sessionData);
 
-            //UpdateMatrixPlacement();
-            UpdateRewardCap($user['id']);
-
-            TransferHumanitarianCommissions();
-            
             return $this->response->setJSON([
                 'status' => 'success',
                 'data'   => $sessionData,

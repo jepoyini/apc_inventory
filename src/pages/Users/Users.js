@@ -1,266 +1,388 @@
-// src/pages/Users/index.jsx
-import React, { useMemo, useState } from "react";
+// ================================================================
+// FILE: src/pages/Users/Users.jsx
+// ================================================================
+import React, { useState, useEffect, useRef } from "react";
 import {
-  Card, CardHeader, CardBody,
-  Container, Row, Col,
-  Button, Input
+  Card, CardBody, Col, Row, Container, Input, Button, Badge,
+  UncontrolledDropdown, DropdownToggle, DropdownMenu, DropdownItem, Spinner
 } from "reactstrap";
-import BreadCrumb from "../../Components/Common/BreadCrumb";
-
-const MOCK_USERS = [
-  {
-    id: 1,
-    name: "Bryan Hamer",
-    email: "owner@americanplaque.com",
-    role: "Owner",
-    status: "Active",
-    warehouse: "Main Warehouse",
-  },
-  {
-    id: 2,
-    name: "Sarah Johnson",
-    email: "manager@americanplaque.com",
-    role: "Manager",
-    status: "Active",
-    warehouse: "Main Warehouse",
-  },
-  {
-    id: 3,
-    name: "Mike Chen",
-    email: "staff@americanplaque.com",
-    role: "Staff",
-    status: "Active",
-    warehouse: "Japan Warehouse",
-  },
-];
-
-const roleBadge = (role) =>
-  role === "Owner"
-    ? "badge bg-purple-subtle text-purple"
-    : role === "Manager"
-    ? "badge bg-primary-subtle text-primary"
-    : "badge bg-success-subtle text-success";
-
-const statusBadge = (status) =>
-  status === "Active"
-    ? "badge bg-success-subtle text-success"
-    : "badge bg-danger-subtle text-danger";
+import CountUp from "react-countup";
+import { APIClient } from "../../helpers/api_helper";
+import { api } from "../../config";
+import TableContainer from "../../Components/Common/TableContainerReactTable";
+import UserCard from "./UserCard";
+import AddUserDialog from "./AddUserDialog";
+import UserDetailsModal from "./UserDetailsModal";
+import RolesPermissions from "./RolesPermissions";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { hasPermission } from "../../helpers/permissions";
+import Swal from "sweetalert2";
 
 const Users = () => {
-  document.title = "User Management | APC Inventory";
-  const [users] = useState(MOCK_USERS);
-  const [search, setSearch] = useState("");
+  document.title = "User Management | APC";
+  const apipost = new APIClient();
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return users;
-    return users.filter(
-      (u) =>
-        u.name.toLowerCase().includes(term) ||
-        u.email.toLowerCase().includes(term) ||
-        u.role.toLowerCase().includes(term)
-    );
-  }, [users, search]);
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [users, setUsers] = useState([]);
+  const [summary, setSummary] = useState({ total: 0, active: 0, roles: 0, locked: 0 });
+  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState("grid"); // kept grid/list support
 
-  const stats = useMemo(
-    () => ({
-      owners: users.filter((u) => u.role === "Owner").length,
-      managers: users.filter((u) => u.role === "Manager").length,
-      staff: users.filter((u) => u.role === "Staff").length,
-      active: users.filter((u) => u.status === "Active").length,
-    }),
-    [users]
-  );
+  // modals
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [activeUserId, setActiveUserId] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [rolesOpen, setRolesOpen] = useState(false);
 
-  const initials = (name = "") =>
-    name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
+  // filters
+  const searchRef = useRef("");
+  const roleRef = useRef("");
+  const statusRef = useRef("");
+
+  const authUser = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      debugger;
+      const r = await apipost.post("/users", {
+        search: searchRef.current,
+        role: roleRef.current,
+        status: statusRef.current
+      });
+      setUsers(r?.users || []);
+      setSummary(r?.summary || summary);
+    } catch {
+      toast.error("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openAdd = () => {
+    setEditingUser(null);
+    setCreateOpen(true);
+  };
+
+  const openEdit = (user) => {
+    debugger; 
+    setEditingUser(user);
+    setCreateOpen(true);
+  };
+
+  const handleView = (id) => { setActiveUserId(id); setDetailsOpen(true); };
+
+  const prefixUrl = (url) => {
+    const base = api?.IMAGE_URL ? api.IMAGE_URL.replace(/\/$/, "") : "";
+    if (!url) return base + "/images/noavatar.png";
+    if (url.startsWith("http")) return url;
+    return base + "/" + url.replace(/^\//, "");
+  };
+
+  const handleDeleteUser = async (id) => {
+    Swal.fire({
+      title: "Are you sure?",
+      text: "This will mark the user as deleted.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#6c757d",
+      confirmButtonText: "Yes, delete it!",
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+              debugger; 
+        try {
+          const r = await apipost.post("/users/delete", { id });
+          Swal.fire("Deleted!", "User status has been set to deleted.", "success");
+          load(); // ✅ refresh list
+        } catch {
+          Swal.fire("Error", "Failed to delete user.", "error");
+        }
+      }
+    });
+  };
+
+  const columns = [
+    { header: "ID", accessorKey: "id" },
+    {
+      header: "Name", accessorKey: "name",
+      cell: (c) => (
+        <div className="d-flex align-items-center" style={{ cursor: "pointer" }}
+          onClick={() => handleView(c.row.original.id)}>
+          <img src={prefixUrl(c.row.original.avatar)} alt="" width="40" height="40"
+            className="me-2 rounded-circle" />
+          <span>{c.getValue()}</span>
+        </div>
+      )
+    },
+    { header: "Email", accessorKey: "email" },
+    { header: "Role", accessorKey: "role_name" },
+    {
+      header: "Status", accessorKey: "status",
+      cell: (c) => (
+        <Badge color={c.getValue() === "active" ? "success" : "secondary"}>
+          {c.getValue()}
+        </Badge>
+      )
+    },
+    {
+      header: "Action",
+      cell: (c) => (
+        <UncontrolledDropdown>
+          <DropdownToggle tag="button" className="btn btn-sm btn-soft-primary">
+            <i className="ri-more-fill" />
+          </DropdownToggle>
+          <DropdownMenu>
+            <DropdownItem onClick={() => handleView(c.row.original.id)}>View</DropdownItem>
+
+            {hasPermission(authUser, "users", "edit") && (
+              <DropdownItem onClick={() => openEdit(c.row.original)}>Edit</DropdownItem>
+            )}
+
+            {hasPermission(authUser, "users", "delete") && (
+              <DropdownItem onClick={() => handleDeleteUser(c.row.original.id)}>Delete</DropdownItem>
+            )}
+          </DropdownMenu>
+        </UncontrolledDropdown>
+      )
+    }
+  ];
 
   return (
     <div className="page-content">
+      <ToastContainer limit={1} />
       <Container fluid>
-        {/* Header + CTA */}
-        <div className="d-flex align-items-start justify-content-between flex-wrap gap-2">
-          <div>
-            <BreadCrumb title="User Management" pageTitle="Dashboard" url="/dashboard" />
-            <div className="text-muted">Manage team members and their access permissions</div>
-          </div>
-          <Button color="dark">
-            <i className="ri-user-add-line me-2" />
-            Add User
-          </Button>
-        </div>
-
-        {/* Summary cards */}
-        <Row className="mt-3 g-3">
-          <Col md={6} xl={3}>
-            <Card>
-              <CardHeader className="d-flex align-items-center justify-content-between">
-                <div className="text-muted fw-medium">Total Users</div>
-                <i className="ri-group-line text-muted" />
-              </CardHeader>
-              <CardBody>
-                <div className="fs-3 fw-semibold">{users.length}</div>
-                <div className="text-success small mt-1">{stats.active} active</div>
-              </CardBody>
-            </Card>
-          </Col>
-          <Col md={6} xl={3}>
-            <Card>
-              <CardHeader className="d-flex align-items-center justify-content-between">
-                <div className="text-muted fw-medium">Owners</div>
-                <i className="ri-shield-keyhole-line text-purple" />
-              </CardHeader>
-              <CardBody>
-                <div className="fs-3 fw-semibold">{stats.owners}</div>
-                <div className="small text-purple">full access</div>
-              </CardBody>
-            </Card>
-          </Col>
-          <Col md={6} xl={3}>
-            <Card>
-              <CardHeader className="d-flex align-items-center justify-content-between">
-                <div className="text-muted fw-medium">Managers</div>
-                <i className="ri-shield-user-line text-primary" />
-              </CardHeader>
-              <CardBody>
-                <div className="fs-3 fw-semibold">{stats.managers}</div>
-                <div className="small text-primary">management access</div>
-              </CardBody>
-            </Card>
-          </Col>
-          <Col md={6} xl={3}>
-            <Card>
-              <CardHeader className="d-flex align-items-center justify-content-between">
-                <div className="text-muted fw-medium">Staff</div>
-                <i className="ri-shield-check-line text-success" />
-              </CardHeader>
-              <CardBody>
-                <div className="fs-3 fw-semibold">{stats.staff}</div>
-                <div className="small text-success">standard access</div>
-              </CardBody>
-            </Card>
+        {/* Header */}
+        <Row className="mb-2">
+          <Col><h2>User Management</h2></Col>
+          <Col className="text-end">
+            {hasPermission(authUser, "users", "add") && (
+              <Button color="primary" onClick={openAdd}>
+                <i className="ri-add-line me-1" /> Add User
+              </Button>
+            )}{" "}
+            {hasPermission(authUser, "users", "edit") && (
+              <Button color="warning" onClick={() => setRolesOpen(true)}>
+                <i className="ri-shield-user-line me-1" /> Roles
+              </Button>
+            )}
           </Col>
         </Row>
 
-        {/* Search */}
-        <Card className="mt-3">
+        {/* Summary */}
+        <Row className="g-3 mb-3">
+          {/* Total Users */}
+          <Col xl={3} md={4}>
+            <Card className="card-animate"><CardBody>
+              <div className="d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <p className="text-muted mb-0">Total Users</p>
+                </div>
+                <div className="avatar-sm flex-shrink-0">
+                  <span className="avatar-title rounded bg-primary-subtle fs-3">
+                    <i className="ri-team-line text-primary"></i>
+                  </span>
+                </div>
+              </div>
+              <h4 className="fs-22 fw-semibold mt-3 mb-0">
+                <CountUp end={summary.total || 0} duration={2} />
+              </h4>
+            </CardBody></Card>
+          </Col>
+
+          {/* Active Users */}
+          <Col xl={3} md={4}>
+            <Card className="card-animate"><CardBody>
+              <div className="d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <p className="text-muted mb-0">Active Users</p>
+                </div>
+                <div className="avatar-sm flex-shrink-0">
+                  <span className="avatar-title rounded bg-success-subtle fs-3">
+                    <i className="ri-checkbox-circle-line text-success"></i>
+                  </span>
+                </div>
+              </div>
+              <h4 className="fs-22 fw-semibold mt-3 mb-0">
+                <CountUp end={summary.active || 0} duration={2} />
+              </h4>
+            </CardBody></Card>
+          </Col>
+
+          {/* Roles */}
+          {/* <Col xl={3} md={4}>
+            <Card className="card-animate"><CardBody>
+              <div className="d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <p className="text-muted mb-0">Roles</p>
+                </div>
+                <div className="avatar-sm flex-shrink-0">
+                  <span className="avatar-title rounded bg-info-subtle fs-3">
+                    <i className="ri-shield-user-line text-info"></i>
+                  </span>
+                </div>
+              </div>
+              <h4 className="fs-22 fw-semibold mt-3 mb-0">
+                <CountUp end={summary.roles || 0} duration={2} />
+              </h4>
+            </CardBody></Card>
+          </Col> */}
+
+          {/* Locked Users */}
+          <Col xl={3} md={4}>
+            <Card className="card-animate"><CardBody>
+              <div className="d-flex align-items-center">
+                <div className="flex-grow-1">
+                  <p className="text-muted mb-0">Locked</p>
+                </div>
+                <div className="avatar-sm flex-shrink-0">
+                  <span className="avatar-title rounded bg-danger-subtle fs-3">
+                    <i className="ri-error-warning-line text-danger"></i>
+                  </span>
+                </div>
+              </div>
+              <h4 className="fs-22 fw-semibold mt-3 mb-0">
+                <CountUp end={summary.locked || 0} duration={2} />
+              </h4>
+            </CardBody></Card>
+          </Col>
+        </Row>
+
+        {/* Filters */}
+        <Card className="mb-3">
           <CardBody>
-            <div className="position-relative">
-              <i className="ri-search-line position-absolute top-50 translate-middle-y ms-3 text-muted" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search users by name, email, or role..."
-                className="ps-5"
-              />
+            {/* Header with toggle icon */}
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <h5 className="mb-0">
+                <i className="ri-filter-3-line me-2" /> Filters
+              </h5>
+              <Button
+                color="light"
+                size="sm"
+                onClick={() => setFiltersOpen(!filtersOpen)}
+              >
+                <i
+                  className={`ri-arrow-${filtersOpen ? "up" : "down"}-s-line`}
+                  style={{ fontSize: "1.2rem" }}
+                />
+              </Button>
             </div>
+
+            {/* Collapsible filter form */}
+            {filtersOpen && (
+              <Row className="g-2">
+                <Col md={3}>
+                  <Input
+                    type="select"
+                    onChange={(e) => {
+                      roleRef.current = e.target.value;
+                      load();
+                    }}
+                  >
+                    <option value="">All Roles</option>
+                    <option>Admin</option>
+                    <option>Manager</option>
+                    <option>Staff</option>
+                  </Input>
+                </Col>
+                <Col md={3}>
+                  <Input
+                    type="select"
+                    onChange={(e) => {
+                      statusRef.current = e.target.value;
+                      load();
+                    }}
+                  >
+                    <option value="">All Statuses</option>
+                    <option value="active">Active</option>
+                    <option value="locked">Locked</option>
+                  </Input>
+                </Col>
+                <Col md={4}>
+                  <Input
+                    placeholder="Search users..."
+                    onChange={(e) => {
+                      searchRef.current = e.target.value;
+                    }}
+                  />
+                </Col>                
+                <Col md={2}>
+                  <Button
+                    color="primary"
+                    onClick={() => load()} // now applies current searchRef, roleRef, statusRef
+                    disabled={loading}
+                  >
+                    <i className="ri-refresh-line me-1"></i> Refresh
+                  </Button>
+                </Col>
+              </Row>
+            )}
           </CardBody>
         </Card>
 
-        {/* User cards */}
-        <Row className="g-3 mt-1">
-          {filtered.map((u) => (
-            <Col md={6} lg={4} key={u.id}>
-              <Card className="h-100 hover-shadow">
-                <CardBody>
-                  <div className="d-flex align-items-center gap-3 mb-3">
-                    <div className="avatar-lg">
-                      <span className="avatar-title rounded-circle bg-primary-subtle text-primary fs-5">
-                        {initials(u.name)}
-                      </span>
-                    </div>
-                    <div className="flex-grow-1">
-                      <h6 className="mb-1">{u.name}</h6>
-                      <div className="text-muted small">{u.email}</div>
-                    </div>
-                    <span className={statusBadge(u.status)}>{u.status}</span>
-                  </div>
-
-                  <div className="d-flex align-items-center justify-content-between mb-2">
-                    <span className={roleBadge(u.role)}>{u.role}</span>
-                  </div>
-
-                  {u.warehouse && (
-                    <div className="text-muted small mb-2">
-                      <i className="ri-map-pin-2-line me-1" />
-                      {u.warehouse}
-                    </div>
-                  )}
-
-                  <hr className="my-2" />
-                  <div className="text-muted small">
-                    <div>User ID: {u.id}</div>
-                    <div>
-                      Access Level:{" "}
-                      {u.role === "Owner"
-                        ? "Full System Access"
-                        : u.role === "Manager"
-                        ? "Management Functions"
-                        : "Standard Operations"}
-                    </div>
-                  </div>
-
-                  <div className="d-flex gap-2 pt-3">
-                    <Button color="light" outline className="flex-grow-1">
-                      <i className="ri-edit-line me-1" />
-                      Edit
-                    </Button>
-                    <Button color="light" outline className="text-danger">
-                      <i className="ri-delete-bin-6-line" />
-                    </Button>
-                  </div>
-                </CardBody>
-              </Card>
-            </Col>
-          ))}
+        {/* Row Count */}
+        <Row className="mb-2">
+          <Col>
+            <small className="text-muted">
+              Showing <strong>{users.length}</strong> {users.length === 1 ? "user" : "users"}
+            </small>
+          </Col>
         </Row>
 
-        {filtered.length === 0 && (
-          <div className="text-center text-muted py-5">No users found matching your search</div>
+        {/* Spinner or Table/Grid */}
+        {loading ? (
+          <div className="d-flex justify-content-center align-items-center" style={{ minHeight: "250px" }}>
+            <Spinner color="primary" style={{ width: "3rem", height: "3rem" }} />
+          </div>
+        ) : (
+          view === "list" ? (
+            <Card><CardBody>
+              <TableContainer
+                columns={columns}
+                data={users}
+                loading={loading}
+                theadClass="table-light"
+                tableClass="align-middle table-nowrap"
+                divClass="table-responsive"
+              />
+            </CardBody></Card>
+          ) : (
+            <Row className="g-3">
+              {users.map((u) => (
+                <Col xl={3} key={u.id}>
+                  <UserCard
+                    user={u}
+                    onView={() => handleView(u.id)}
+                    onEdit={() => openEdit(u)}
+                    onDelete={() => handleDeleteUser(u.id)} 
+                  />
+                </Col>
+              ))}
+            </Row>
+          )
         )}
 
-        {/* Team Overview */}
-        <Card className="mt-3">
-          <CardHeader>
-            <h6 className="mb-0">Team Overview</h6>
-          </CardHeader>
-          <CardBody>
-            <Row className="g-3">
-              <Col md={6} lg={4}>
-                <div className="p-3 rounded border border-purple-200 bg-purple-subtle">
-                  <div className="fw-medium text-purple mb-1">Bryan Hamer - Owner</div>
-                  <div className="small text-purple">
-                    Full system access with complete administrative privileges. Manages overall
-                    operations and strategic decisions.
-                  </div>
-                </div>
-              </Col>
-              <Col md={6} lg={4}>
-                <div className="p-3 rounded border border-primary-200 bg-primary-subtle">
-                  <div className="fw-medium text-primary mb-1">Sarah Johnson - Manager</div>
-                  <div className="small text-primary">
-                    Manages daily operations, inventory oversight, and team coordination at the
-                    main warehouse.
-                  </div>
-                </div>
-              </Col>
-              <Col md={6} lg={4}>
-                <div className="p-3 rounded border border-success-200 bg-success-subtle">
-                  <div className="fw-medium text-success mb-1">Mike Chen - Staff</div>
-                  <div className="small text-success">
-                    Handles inventory operations, QR scanning, and product management at the Japan
-                    warehouse.
-                  </div>
-                </div>
-              </Col>
-            </Row>
-          </CardBody>
-        </Card>
+        {/* Modals */}
+        <UserDetailsModal
+          userId={activeUserId}
+          open={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+        />
+
+        <AddUserDialog
+          open={createOpen}
+          onClose={(refresh) => {
+            setCreateOpen(false);
+            if (refresh) load();
+          }}
+          editingUser={editingUser}
+        />
+
+        <RolesPermissions open={rolesOpen} onClose={() => setRolesOpen(false)} />
       </Container>
     </div>
   );

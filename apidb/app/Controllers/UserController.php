@@ -16,6 +16,308 @@ use App\Helpers\AuthHelper;
 class UserController extends ResourceController
 {
 
+    // GET all users + summary
+    public function list()
+    {
+        global $conn;
+
+        // ✅ read JSON or POST
+        $postData = json_decode(file_get_contents("php://input"), true);
+        $search = $postData['search'] ?? '';
+        $role   = $postData['role'] ?? '';
+        $status = $postData['status'] ?? '';
+
+        try {
+            $sql = "
+                SELECT u.*,
+                       r.name AS role_name, r.permissions AS role_permissions
+                FROM users u
+                LEFT JOIN roles r ON r.id = u.role_id
+                WHERE (? = '' OR u.username LIKE ? OR u.firstname LIKE ? OR u.lastname LIKE ? OR u.email LIKE ?)
+                  AND (? = '' OR r.name = ?)
+                  AND (? = '' OR u.status = ?)
+                  AND (u.status <> 'deleted') 
+                ORDER BY u.id DESC
+            ";
+
+            $stmt = $conn->prepare($sql);
+            $likeSearch = "%$search%";
+            $stmt->bind_param(
+                "sssssssss",
+                $search, $likeSearch, $likeSearch, $likeSearch, $likeSearch,
+                $role, $role,
+                $status, $status
+            );
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $users = $result->fetch_all(MYSQLI_ASSOC);
+
+            foreach ($users as &$u) {
+                $u['permissions'] = $u['role_permissions']
+                    ? json_decode($u['role_permissions'], true)
+                    : [];
+                unset($u['role_permissions']);
+            }
+
+            // Summary
+            $summarySql = "
+                SELECT 
+                  (SELECT COUNT(*) FROM users) AS total,
+                  (SELECT COUNT(*) FROM users WHERE status = 'active') AS active,
+                  (SELECT COUNT(*) FROM roles) AS roles,
+                  (SELECT COUNT(*) FROM users WHERE status = 'locked') AS locked
+            ";
+            $summary = $conn->query($summarySql)->fetch_assoc();
+
+            return $this->response->setJSON([
+                'users' => $users,
+                'sql' => $sql,
+                'summary' => $summary
+            ]);
+        } catch (\Throwable $e) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    // GET user details
+    public function details()
+    {
+        global $conn;
+        $postData = json_decode(file_get_contents("php://input"), true);
+        $id = $postData['id'] ?? null;
+
+        if (!$id) {
+            return $this->response->setJSON(['status' => 'error','message' => 'Missing user ID']);
+        }
+
+        try {
+            $sql = "
+                SELECT u.*, r.name AS role_name, r.permissions AS role_permissions
+                FROM users u
+                LEFT JOIN roles r ON r.id = u.role_id
+                WHERE u.id = ?
+            ";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $user = $result->fetch_assoc();
+
+            if (!$user) {
+                return $this->response->setStatusCode(404)->setJSON(['status'=>'error','message'=>'User not found']);
+            }
+
+            $user['permissions'] = $user['role_permissions'] ? json_decode($user['role_permissions'], true) : [];
+            unset($user['role_permissions']);
+
+            return $this->response->setJSON(['status'=>'success','user'=>$user]);
+
+        } catch (\Throwable $e) {
+            return $this->response->setJSON(['status'=>'error','message'=>$e->getMessage()]);
+        }
+    }
+
+    // POST save user (insert or update)
+    public function save()
+    {
+        global $conn;
+
+        $id        = $_POST['id'] ?? null;
+        $username  = $_POST['username'] ?? "";
+        $firstname = $_POST['firstname'] ?? "";
+        $lastname  = $_POST['lastname'] ?? "";
+        $phone     = $_POST['phone'] ?? "";
+        $email     = $_POST['email'] ?? "";
+        $address   = $_POST['address'] ?? "";
+        $city      = $_POST['city'] ?? "";
+        $country   = $_POST['country'] ?? "";
+        $zip   = $_POST['zip'] ?? "";
+        $password  = $_POST['password'] ?? "";
+        $role_id   = $_POST['role_id'] ?? null;
+        $status    = $_POST['status'] ?? "active";
+
+        // Check unique username
+        $checkSql = "SELECT id FROM users WHERE username=? AND id!=?";
+        $stmt = $conn->prepare($checkSql);
+        $stmt->bind_param("si", $username, $id);
+        $stmt->execute();
+        $checkResult = $stmt->get_result();
+        if ($checkResult->num_rows > 0) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'Username already exists'
+            ]);
+        }
+
+        $avatarPath = null;
+        if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+            $newName = uniqid() . "_" . basename($_FILES['avatar']['name']);
+            $targetPath = FCPATH . "uploads/avatars/" . $newName;
+            if (!is_dir(FCPATH . "uploads/avatars")) {
+                mkdir(FCPATH . "uploads/avatars", 0777, true);
+            }
+            move_uploaded_file($_FILES['avatar']['tmp_name'], $targetPath);
+            $avatarPath = "uploads/avatars/" . $newName;
+        }
+
+        try {
+            if ($id) {
+                // UPDATE
+                $sql = "UPDATE users 
+                        SET username=?,firstname=?, lastname=?, phone=?, email=?, address=?, city=?, country=?, zip=?, 
+                            role_id=?, status=?, updated_at=NOW()";
+                $params = [$username, $firstname, $lastname, $phone, $email, $address, $city, $country, $zip, $role_id, $status];
+                $types = "sssssssssss";
+
+                if ($avatarPath) {
+                    $sql .= ", avatar=?";
+                    $params[] = $avatarPath;
+                    $types .= "s";
+                }
+
+                if (!empty($password)) {
+                    $sql .= ", password=?";
+                    $params[] = password_hash($password, PASSWORD_BCRYPT);
+                    $types .= "s";
+                }
+
+                $sql .= " WHERE id=?";
+                $params[] = $id;
+                $types .= "i";
+
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param($types, ...$params);
+                $stmt->execute();
+            } else {
+                // INSERT
+                $sql = "INSERT INTO users 
+                        (username, firstname, lastname, phone, email, address, city, country, zip, password, avatar, role_id, status) 
+                        VALUES (?.?,?,?,?,?,?,?,?,?,?,?,?)";
+                $stmt = $conn->prepare($sql);
+                $hashedPass = password_hash($password, PASSWORD_BCRYPT);
+                $stmt->bind_param(
+                    "sssssssssssss",
+                    $username,
+                    $firstname,
+                    $lastname,
+                    $phone,
+                    $email,
+                    $address,
+                    $city,
+                    $country,
+                    $zip,
+                    $hashedPass,
+                    $avatarPath,
+                    $role_id,
+                    $status
+                );
+                $stmt->execute();
+            }
+
+            return $this->response->setJSON(['status' => 'success']);
+
+        } catch (\Throwable $e) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    // DELETE user (soft delete)
+    public function delete($id = null)
+    {
+        global $conn;
+
+        $postData = json_decode(file_get_contents("php://input"), true);
+        $id = $id ?? ($postData['id'] ?? null);
+
+        if (!$id) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'Missing user ID.'
+            ]);
+        }
+
+        try {
+            $sql = "UPDATE users SET status='deleted', updated_at=NOW() WHERE id=?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+
+            return $this->response->setJSON(['status' => 'success', 'message' => 'User marked as deleted']);
+        } catch (\Throwable $e) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function changepass()
+    {
+        global $conn;
+        $postData = json_decode(file_get_contents("php://input"), true);
+        $id          = $postData['id'] ?? null;
+        $oldPassword = $postData['oldPassword'] ?? "";
+        $newPassword = $postData['newPassword'] ?? "";
+
+        if (!$id || !$oldPassword || !$newPassword) {
+            return $this->response->setJSON([
+                "status"  => "error",
+                "message" => "Missing required fields."
+            ]);
+        }
+
+        try {
+            // 1. Get current password
+            $sql  = "SELECT password FROM users WHERE id = ? LIMIT 1";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $user   = $result->fetch_assoc();
+
+            if (!$user) {
+                return $this->response->setJSON([
+                    "status"  => "error",
+                    "message" => "User not found."
+                ]);
+            }
+
+            // 2. Verify old password
+            if (!password_verify($oldPassword, $user['password'])) {
+                return $this->response->setJSON([
+                    "status"  => "error",
+                    "message" => "Old password is incorrect."
+                ]);
+            }
+
+            // 3. Hash new password
+            $hashedNew = password_hash($newPassword, PASSWORD_BCRYPT);
+
+            // 4. Update in DB
+            $update = "UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?";
+            $stmt   = $conn->prepare($update);
+            $stmt->bind_param("si", $hashedNew, $id);
+            $stmt->execute();
+
+            return $this->response->setJSON([
+                "status"  => "success",
+                "message" => "Password updated successfully."
+            ]);
+
+        } catch (\Throwable $e) {
+            return $this->response->setJSON([
+                "status"  => "error",
+                "message" => $e->getMessage()
+            ]);
+        }
+    }
+
 public function getAnnouncement()
 {
     global $conn;
@@ -2647,136 +2949,136 @@ if ($rank === 'admin') {
         $glueapp_url = "";
         $ewallet_balance = 0;
         $total_deposits = 0; 
+        $expense_wallet_balance = 0; 
+        // //fullname
+        // $sql = "SELECT CONCAT(firstname,' ',lastname) as fullname, reward_cap FROM users WHERE id = '$uid'";
+        // $result = $conn->query($sql);
+        // if ($result->num_rows > 0) {
+        //     $row = $result->fetch_assoc();
+        //     $fullname = $row['fullname'];
+        //     $reward_cap = $row['reward_cap'];
+        // } else {
+        //     return $this->response->setJSON([
+        //         "status"=> "error",
+        //         "message" => "No user found!"
+        //     ]);
+        // }
 
-        //fullname
-        $sql = "SELECT CONCAT(firstname,' ',lastname) as fullname, reward_cap FROM users WHERE id = '$uid'";
-        $result = $conn->query($sql);
-        if ($result->num_rows > 0) {
-            $row = $result->fetch_assoc();
-            $fullname = $row['fullname'];
-            $reward_cap = $row['reward_cap'];
-        } else {
-            return $this->response->setJSON([
-                "status"=> "error",
-                "message" => "No user found!"
-            ]);
-        }
+        // // personaly_sponsored
+        // $sql = "Select count(0) as count  from users Where sponsor_id= $uid";
+        // $row = $conn->query($sql);
+        // $row = $row->fetch_assoc();
+        // $total_personaly_sponsored =$row['count'];    
 
-        // personaly_sponsored
-        $sql = "Select count(0) as count  from users Where sponsor_id= $uid";
-        $row = $conn->query($sql);
-        $row = $row->fetch_assoc();
-        $total_personaly_sponsored =$row['count'];    
-
-        //Total Earnings
-        $sql = "Select sum(amount) as total from transactions where user_id = '$uid' and type = 'commission'";
-        $result = $conn->query($sql);
-        if ($result->num_rows > 0) {
-            $row = $result->fetch_assoc();
-            $total_earnings = $row['total'];
-            if (is_null($total_earnings))
-                $total_earnings = 0; 
-        }
-
-
-        //Total Deposits
-        $sql = "Select sum(amount) as total from ewallets where user_id = '$uid' and type = 'deposit'";
-        $result = $conn->query($sql);
-        if ($result->num_rows > 0) {
-            $row = $result->fetch_assoc();
-            $total_deposits = $row['total'];
-            if (is_null($total_deposits))
-                $total_deposits = 0; 
-        }
-
-        $expense_wallet_balance = GetRunningTotal($uid);
-        $reward_wallet_balance = GetRunningRewardTotal($uid);
-        $ewallet_balance = GetRunningTotal_Ewallet($uid);
+        // //Total Earnings
+        // $sql = "Select sum(amount) as total from transactions where user_id = '$uid' and type = 'commission'";
+        // $result = $conn->query($sql);
+        // if ($result->num_rows > 0) {
+        //     $row = $result->fetch_assoc();
+        //     $total_earnings = $row['total'];
+        //     if (is_null($total_earnings))
+        //         $total_earnings = 0; 
+        // }
 
 
-        // Growth Percentage
-        $sql = "
-            SELECT 
-                ROUND(
-                    (total - LAG(total) OVER (ORDER BY month)) / NULLIF(LAG(total) OVER (ORDER BY month), 0) * 100,
-                    0
-                ) AS growth_rate_percent
-            FROM (
-                SELECT 
-                    DATE_FORMAT(date_created, '%Y-%m') AS month,
-                    SUM(amount) AS total
-                FROM transactions
-                WHERE user_id = '$uid' AND type = 'commission'
-                GROUP BY month
-            ) AS monthly_totals
-            ORDER BY month DESC
-            LIMIT 1
-        ";
+        // //Total Deposits
+        // $sql = "Select sum(amount) as total from ewallets where user_id = '$uid' and type = 'deposit'";
+        // $result = $conn->query($sql);
+        // if ($result->num_rows > 0) {
+        //     $row = $result->fetch_assoc();
+        //     $total_deposits = $row['total'];
+        //     if (is_null($total_deposits))
+        //         $total_deposits = 0; 
+        // }
 
-        $result = $conn->query($sql);
-        if ($result && $result->num_rows > 0) {
-            $row = $result->fetch_assoc();
-            if (!is_null($row['growth_rate_percent'])) {
-                $growth_percent = (int) $row['growth_rate_percent']; // 
-            }
-        }
+        // $expense_wallet_balance = GetRunningTotal($uid);
+        // $reward_wallet_balance = GetRunningRewardTotal($uid);
+        // $ewallet_balance = GetRunningTotal_Ewallet($uid);
 
-        $monthNames = [
-          '01' => 'Jan', '02' => 'Feb', '03' => 'Mar', '04' => 'Apr',
-          '05' => 'May', '06' => 'Jun', '07' => 'Jul', '08' => 'Aug',
-          '09' => 'Sep', '10' => 'Oct', '11' => 'Nov', '12' => 'Dec'
-        ];
 
-        $growth_data = [];
+        // // Growth Percentage
+        // $sql = "
+        //     SELECT 
+        //         ROUND(
+        //             (total - LAG(total) OVER (ORDER BY month)) / NULLIF(LAG(total) OVER (ORDER BY month), 0) * 100,
+        //             0
+        //         ) AS growth_rate_percent
+        //     FROM (
+        //         SELECT 
+        //             DATE_FORMAT(date_created, '%Y-%m') AS month,
+        //             SUM(amount) AS total
+        //         FROM transactions
+        //         WHERE user_id = '$uid' AND type = 'commission'
+        //         GROUP BY month
+        //     ) AS monthly_totals
+        //     ORDER BY month DESC
+        //     LIMIT 1
+        // ";
 
-        $sql = "
-            SELECT 
-                DATE_FORMAT(date_created, '%Y-%m') AS month,
-                SUM(amount) AS total
-            FROM transactions
-            WHERE user_id = '$uid' AND type = 'commission'
-            GROUP BY month
-            ORDER BY month ASC
-        ";
+        // $result = $conn->query($sql);
+        // if ($result && $result->num_rows > 0) {
+        //     $row = $result->fetch_assoc();
+        //     if (!is_null($row['growth_rate_percent'])) {
+        //         $growth_percent = (int) $row['growth_rate_percent']; // 
+        //     }
+        // }
 
-        $result = $conn->query($sql);
-        if ($result && $result->num_rows > 0) {
-            while ($row = $result->fetch_assoc()) {
-                $monthParts = explode('-', $row['month']);
-                $monthName = $monthNames[$monthParts[1]] ?? $row['month'];
-                $growth_data[] = [
-                    'name' => $monthName,
-                    'earnings' => (float)$row['total']
-                ];
-            }
-        }
+        // $monthNames = [
+        //   '01' => 'Jan', '02' => 'Feb', '03' => 'Mar', '04' => 'Apr',
+        //   '05' => 'May', '06' => 'Jun', '07' => 'Jul', '08' => 'Aug',
+        //   '09' => 'Sep', '10' => 'Oct', '11' => 'Nov', '12' => 'Dec'
+        // ];
 
-        $WithdrawableBalance = GetWithdrawableBalance($uid);
-        $pending_withdrawal = GetTotalPendingWithdrawal($uid);
-        $total_withdrawed = GetTotalWithdrawn($uid);
+        // $growth_data = [];
+
+        // $sql = "
+        //     SELECT 
+        //         DATE_FORMAT(date_created, '%Y-%m') AS month,
+        //         SUM(amount) AS total
+        //     FROM transactions
+        //     WHERE user_id = '$uid' AND type = 'commission'
+        //     GROUP BY month
+        //     ORDER BY month ASC
+        // ";
+
+        // $result = $conn->query($sql);
+        // if ($result && $result->num_rows > 0) {
+        //     while ($row = $result->fetch_assoc()) {
+        //         $monthParts = explode('-', $row['month']);
+        //         $monthName = $monthNames[$monthParts[1]] ?? $row['month'];
+        //         $growth_data[] = [
+        //             'name' => $monthName,
+        //             'earnings' => (float)$row['total']
+        //         ];
+        //     }
+        // }
+
+        // $WithdrawableBalance = GetWithdrawableBalance($uid);
+        // $pending_withdrawal = GetTotalPendingWithdrawal($uid);
+        // $total_withdrawed = GetTotalWithdrawn($uid);
         
         return $this->response->setJSON([
             "status" => "success",
             "fullname"=> $fullname,
-            "todays_earnings" => $todays_earnings,
-            "total_earnings" => $total_earnings,
-            "onhold_earnings" => $onhold_earnings,
-            "purchased_plans" => $purchased_plans,
-            "coded_downlines" => $coded_downlines, 
-            "expense_wallet" => $expense_wallet_balance,
-            "reward_wallet" => $reward_wallet_balance,
-            "reward_cap" => $reward_cap,
-            "total_withdrawed" => $total_withdrawed,
-            "pending_withdrawal" => $pending_withdrawal,
-            "total_downlines" => $total_downlines,
-            "total_downline_members" => $total_downline_members,
-            "total_personaly_sponsored" => $total_personaly_sponsored,
-            "withdrawable_balance" => $WithdrawableBalance['availabletowithdraw'],
-            "growth_rate" => $growth_percent,
-            "glueapp_url" => $glueapp_url,
-            "chart_data" => $growth_data,
-            "ewallet_balance"  =>  $ewallet_balance,
-            "total_deposits"  =>  $total_deposits
+            "todays_earnings" =>0,
+            "total_earnings" => 0,
+            "onhold_earnings" => 0,
+            "purchased_plans" => 0,
+            "coded_downlines" => 0, 
+            "expense_wallet" =>0,
+            "reward_wallet" =>0,
+            "reward_cap" => 0,
+            "total_withdrawed" => 0,
+            "pending_withdrawal" => 0,
+            "total_downlines" => 0,
+            "total_downline_members" => 0,
+            "total_personaly_sponsored" => 0,
+            "withdrawable_balance" =>0,
+            "growth_rate" => 0,
+            "glueapp_url" => 0,
+            "chart_data" => 0,
+            "ewallet_balance"  =>  0,
+            "total_deposits"  => 0
         ]);
 
     }

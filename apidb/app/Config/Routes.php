@@ -185,6 +185,9 @@ $routes->group('/p2p', ['namespace' => 'App\Controllers'], static function ($rou
     $routes->post('/warehouses/(:num)/move-product', 'WarehouseController::moveProduct/$1');
     $routes->post('/warehouses/(:num)/remove-product', 'WarehouseController::removeProduct/$1');
 
+    $routes->post('/warehouses/stat', 'WarehouseController::getWarehousesStat');
+    
+
 $routes->group('products', ['namespace' => 'App\Controllers'], function($routes) {
     // main listing
     $routes->post('/', 'ProductController::index');
@@ -210,6 +213,9 @@ $routes->group('products', ['namespace' => 'App\Controllers'], function($routes)
 
     // QR
     $routes->post('(:num)/qr', 'ProductController::qr/$1');
+    $routes->post('scan', 'ProductController::scan');
+    $routes->post('lookup', 'ProductController::lookup');
+
 
     // CSV export
     $routes->post('export', 'ProductController::export');
@@ -221,4 +227,24 @@ $routes->group('products', ['namespace' => 'App\Controllers'], function($routes)
 
 });
 
+
+// ================================================================
+// User Management Routes
+// ================================================================
+$routes->group('users', function($routes) {
+    $routes->post('/', 'UserController::list');          // list users + summary
+    $routes->post('details', 'UserController::details'); // get single user
+    $routes->post('save', 'UserController::save');       // insert/update user
+    $routes->post('delete', 'UserController::delete');   // delete user
+    $routes->post('changepass', 'UserController::changepass');
+});
+
+// ================================================================
+// Role Management Routes
+// ================================================================
+$routes->group('roles', function($routes) {
+    $routes->post('list', 'RoleController::list');       // list all roles
+    $routes->post('save', 'RoleController::save');       // insert/update role
+    $routes->post('delete', 'RoleController::delete');   // delete role
+});
 

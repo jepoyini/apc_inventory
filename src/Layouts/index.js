@@ -145,7 +145,7 @@ const Layout = (props) => {
     }, []);
 
     const toggleAnnouncementModal = () => {
-
+   return;
         // Exit if the current URL is not /dashboard
         if (location.pathname !== '/home') {
             return;

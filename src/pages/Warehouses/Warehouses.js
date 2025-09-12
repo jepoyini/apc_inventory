@@ -153,7 +153,6 @@ const Warehouses = () => {
   // LOAD (POST instead of GET)
   const load = async (page) => {
     try {
-      debugger; 
       const body = {
         page,
         limit: pageSize,

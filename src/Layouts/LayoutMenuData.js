@@ -402,12 +402,12 @@ const menuItems = [
     link: "/users",
     icon: "ri-team-line",
   },
-  {
-    id: "settings",
-    label: "Settings ",
-    link: "/settings",
-    icon: "ri-settings-3-line",
-  },
+  // {
+  //   id: "settings",
+  //   label: "Settings ",
+  //   link: "/settings",
+  //   icon: "ri-settings-3-line",
+  // },
 ];
 
 

@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 //import images
 import avatar1 from "../../assets/images/users/user-dummy-img.jpg";
 import { createSelector } from 'reselect';
+import { api } from "../../config";
 
 const ProfileDropdown = () => {
     const location = useLocation();
@@ -19,12 +20,20 @@ const ProfileDropdown = () => {
 
     const [userName, setUserName] = useState("");
     const [role, setRole] = useState("");
+    const [avatar, setAvatar] = useState("");
+    const prefixUrl = (url) => {
+        const base = api?.IMAGE_URL ? api.IMAGE_URL.replace(/\/$/, "") : "";
+        if (!url) return base + "/images/noavatar.png";
+        if (url.startsWith("http")) return url;
+        return base + "/" + url.replace(/^\//, "");
+    };
 
     useEffect(() => {
         if (sessionStorage.getItem("authUser")) {
             const obj = JSON.parse(sessionStorage.getItem("authUser"));
             setUserName(`${obj.username} (#${obj.id})`);
             setRole(obj.rank)
+            setAvatar(prefixUrl(obj.avatar))
         }
     }, [userName, user,location.pathname]);
 
@@ -38,7 +47,7 @@ const ProfileDropdown = () => {
             <Dropdown isOpen={isProfileDropdown} toggle={toggleProfileDropdown} className="ms-sm-3 header-item topbar-user">
                 <DropdownToggle tag="button" type="button" className="btn">
                     <span className="d-flex align-items-center">
-                        <img className="rounded-circle header-profile-user" src={avatar1}
+                        <img className="rounded-circle header-profile-user" src={avatar}
                             alt="Header Avatar" />
                         <span className="text-start ms-xl-2">
                             <span className="d-none d-xl-inline-block ms-1 fw-medium user-name-text">{userName}</span>
@@ -61,7 +70,7 @@ const ProfileDropdown = () => {
                             <span className="align-middle">Profile</span>
                         </Link>
                     </DropdownItem>
-                    <DropdownItem className='p-0'>
+                    {/* <DropdownItem className='p-0'>
                         <Link to="/referrals" className="dropdown-item">
                             <i className="mdi mdi-account-multiple-outline fs-16 me-1"></i>
                             <span className="align-middle">Referrals</span>
@@ -72,7 +81,7 @@ const ProfileDropdown = () => {
                             <i className="mdi mdi-link-variant fs-16 me-1"></i>
                             <span className="align-middle">Initiatives</span>
                         </Link>
-                    </DropdownItem>
+                    </DropdownItem> */}
                     {/* <DropdownItem className='p-0'>
                         <Link to={process.env.PUBLIC_URL + "#"} className="dropdown-item">
                             <i className="mdi mdi-message-text-outline text-muted fs-16 align-middle me-1"></i> <span

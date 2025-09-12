@@ -351,11 +351,32 @@ body {
 .mr10px {
   margin-right: 10px; 
 }
-
+.ml10px {
+  margin-left: 10px; 
+}
 .mt-10 {
   margin-top: -10px;
 }
 
 .mw-1650 {
   max-width: 56rem;
+}
+
+.border-dashed {
+  border: 2px dashed #ccc;
+  border-radius: 6px;
+  transition: border-color 0.2s ease-in-out;
+}
+
+.border-dashed:hover {
+  border-color: #409eff; /* highlight on hover */
+  background: #f9f9f9;
+  cursor: pointer;
+}
+
+.dropzone-card {
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
