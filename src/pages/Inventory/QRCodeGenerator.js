@@ -6,70 +6,75 @@ import {
   Modal, ModalHeader, ModalBody, Row, Col, Card, CardBody,
   Input, Label, Button, FormGroup
 } from "reactstrap";
-import QRCode from "qrcode"; // programmatic generator (not a component)
+import QRCode from "qrcode";
 import html2canvas from "html2canvas";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { toast } from "react-toastify";
 
 /** ---------------- Label constants (50mm x 30mm landscape) ---------------- */
-const LABEL_W_MM = 50;       // label width in millimeters
-const LABEL_H_MM = 30;       // label height in millimeters
-const INNER_PAD_MM = 1;      // inner padding all around
-const QR_BOX_MM = 20;        // visual QR box size (square) inside label
-const PRINT_QR_PX = 600;     // QR bitmap resolution for crisp PRINT (scaled down to 28mm via CSS)
+const LABEL_W_MM = 50;
+const LABEL_H_MM = 30;
+const INNER_PAD_MM = 0;
+const QR_BOX_MM = 18;
+const PRINT_QR_PX = 600;
 
-/** For ZIP export (PNG), we render a label in the DOM at CSS px and rasterize with scale>1 */
-const EXPORT_SCALE = 4;      // html2canvas scale multiplier for sharper PNGs
-const CSS_PX_PER_MM = 96 / 25.4; // ~3.7795 CSS px per mm (browser "96dpi" world)
+/** Font sizes (in mm) */
+const FONT_SKU_MM = 3.0;      // SKU text
+const FONT_NAME_MM = 3.0;     // Product name
+const FONT_CUSTOM_MM = 2.0;   // Custom text
+
+/** For ZIP export (PNG) */
+const EXPORT_SCALE = 4;
+const CSS_PX_PER_MM = 96 / 25.4;
 const mm2px = (mm) => Math.round(mm * CSS_PX_PER_MM);
 
-const SPACER_TOP_MM = 1.5;     // was flex:1 — now fixed, smaller
-const SPACER_BOTTOM_MM = 1.0;  // space between QR and text
+const SPACER_TOP_MM = 1.5;
+const SPACER_BOTTOM_MM = 1.0;
 
 /** ---------------- Helpers ---------------- */
 const clampMin = (val, min) => Math.max(Number(val) || min, min);
 const sanitizeFileName = (s) =>
   String(s || "qr").replace(/[^a-z0-9\-_.]+/gi, "_").slice(0, 120) || "qr";
 
-const QRCodeGenerator = ({ product, open, onClose }) => {
+const QRCodeGenerator = ({ products = [], open, onClose }) => {
   const [format, setFormat] = useState("sku"); // 'sku' | 'serial'
-  const [size, setSize] = useState(200);       // preview QR size in px (UI only)
+  const [size, setSize] = useState(200);
   const [includeText, setIncludeText] = useState(true);
   const [customText, setCustomText] = useState("");
-  const [mode, setMode] = useState("product"); // 'product' | 'items'
   const [rangeFrom, setRangeFrom] = useState(1);
   const [rangeTo, setRangeTo] = useState(1);
 
   const qrWrapperRef = useRef(null);
   const [previewUrl, setPreviewUrl] = useState("");
 
-  /** product.available_qty may be missing; we don't block Items mode if absent */
-  const rawMaxQty = Number(product?.available_qty);
-  const hasMax = Number.isFinite(rawMaxQty) && rawMaxQty > 0;
-  const maxQty = hasMax ? rawMaxQty : null;
+  /** Total qty across all products */
+  const rawMaxQty = products.reduce((sum, p) => sum + (Number(p.available_qty) || 0), 0);
+  const hasMax = rawMaxQty > 0;
+
+  const scaleFactor = 2;
+  const topSpacerPx = mm2px(SPACER_TOP_MM) * scaleFactor;
+  const bottomSpacerPx = mm2px(SPACER_BOTTOM_MM) * scaleFactor;
 
   useEffect(() => {
-    if (product) {
+    if (products.length > 0) {
       setCustomText("");
-      setFormat("sku");
-      setMode("product");
+      setFormat("serial");
       setRangeFrom(1);
       setRangeTo(hasMax ? rawMaxQty : 1);
       setSize(200);
     }
- 
-  }, [product]);
+  }, [products, hasMax, rawMaxQty]);
 
-  /** Single preview payload */
+  /** Preview payload (use first product as example) */
   const previewData = useMemo(() => {
-    if (!product) return "";
-    if (format === "sku") return product.sku;
-    // 'serial' (unique-ish for preview)
-    return `${product.sku}-${Date.now()}`;
-  }, [product, format]);
+    if (!products.length) return "";
+    const p = products[0];
+    if (format === "sku") return p.sku;
+    return `${p.sku}-${Date.now()}`;
+  }, [products, format]);
 
-  /** Programmatic QR -> base64 PNG */
+  /** Generate QR */
   const generateQrDataUrl = useCallback(async (value, qrSize) => {
     try {
       return await QRCode.toDataURL(String(value), { width: qrSize, margin: 2 });
@@ -80,7 +85,7 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
     }
   }, []);
 
-  /** Refresh preview image */
+  /** Refresh preview */
   const refreshPreview = useCallback(async () => {
     if (!previewData) {
       setPreviewUrl("");
@@ -94,44 +99,38 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
     refreshPreview();
   }, [refreshPreview]);
 
-  /** Build list for printing/exporting */
+  /** Build list of labels */
   const buildItemsList = useCallback(() => {
-    if (!product) return [];
+    if (!products.length) return [];
 
-    if (mode !== "items") {
-      return [{ sku: product.sku, name: product.name, data: product.sku, customText }];
-    }
-
-    // Use user's range regardless of available_qty; enforce >=1 and From<=To.
-    const from = clampMin(rangeFrom, 1);
-    const to = Math.max(from, clampMin(rangeTo, 1));
-
-    // Encode per unit as `${sku}-${num}`
-    const list = Array.from({ length: to - from + 1 }, (_, idx) => {
-      const num = from + idx;
-      return {
-        sku: `${product.sku}-${num}`,
-        name: product.name,
-        data: `${product.sku}-${num}`,
-        customText,
-      };
+    const list = [];
+    products.forEach((p) => {
+      const qty = Number(p.available_qty) || 1;
+      for (let i = 1; i <= qty; i++) {
+        list.push({
+          sku: p.sku,      // ✅ just the base SKU, no counter
+          name: p.name,
+          data: p.sku,     // QR encodes only the SKU
+          customText,
+        });
+      }
     });
-
     return list;
-  }, [product, mode, rangeFrom, rangeTo, customText]);
+  }, [products, customText]);
 
-  /** Download current preview as PNG (simple preview tile) */
+  /** Download preview */
   const handleDownload = async () => {
     if (!qrWrapperRef.current) return;
     const canvas = await html2canvas(qrWrapperRef.current, { scale: 2, backgroundColor: "#fff" });
     const url = canvas.toDataURL("image/png");
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${sanitizeFileName(product?.sku)}-preview.png`;
+    const fname = sanitizeFileName(products[0]?.sku || "qr") + "-preview.png";
+    link.download = fname;
     link.click();
   };
 
-  /** ---------------- PRINT: 50mm x 30mm label (landscape), one label per page ---------------- */
+  /** Print labels */
   const handlePrint = async () => {
     const list = buildItemsList();
     if (!list.length) {
@@ -139,10 +138,8 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
       return;
     }
 
-    // High-DPI QR first
     const pages = [];
-    for (let i = 0; i < list.length; i++) {
-      const item = list[i];
+    for (const item of list) {
       const qrUrl = await generateQrDataUrl(item.data, PRINT_QR_PX);
       pages.push({ item, qrUrl });
     }
@@ -157,60 +154,21 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
             * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             html, body { width: ${LABEL_W_MM}mm; height: ${LABEL_H_MM}mm; margin: 0; padding: 0; }
             body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-
-
-              .label {
-                width: ${LABEL_W_MM}mm;
-                height: ${LABEL_H_MM}mm;
-                padding: ${INNER_PAD_MM}mm;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                page-break-after: always;
-              }
-              .label:last-child { page-break-after: auto; }
-
-              .spacer-top {
-                width: 100%;
-                height: ${SPACER_TOP_MM}mm;   /* smaller fixed top spacer */
-              }
-              .spacer-bottom {
-                width: 100%;
-                height: ${SPACER_BOTTOM_MM}mm; /* smaller fixed bottom spacer */
-              }
-
-              .qr {
-                width: ${QR_BOX_MM}mm;
-                height: ${QR_BOX_MM}mm;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                flex: 0 0 ${QR_BOX_MM}mm;
-              }            
-
-
+            .label { width: ${LABEL_W_MM}mm; height: ${LABEL_H_MM}mm; padding: ${INNER_PAD_MM}mm;
+                     display: flex; flex-direction: column; align-items: center; page-break-after: always; }
+            .label:last-child { page-break-after: auto; }
+            .spacer-top { width: 100%; height: ${SPACER_TOP_MM}mm; }
+            .spacer-bottom { width: 100%; height: ${SPACER_BOTTOM_MM}mm; }
+            .qr { width: ${QR_BOX_MM}mm; height: ${QR_BOX_MM}mm; display: flex; align-items: center; justify-content: center; }
             .qr img { width: ${QR_BOX_MM}mm; height: ${QR_BOX_MM}mm; display: block; }
-
-            .txt {
-              width: 100%;
-              text-align: center;
-              flex: 0 0 auto;
-              overflow: hidden;
-            }
-            .sku {
-              font-weight: 400;
-              font-size: 4.0mm;
-              line-height: 1.05;
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-              font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-            }
-            .name, .custom {
-              font-size: 2.4mm;
-              line-height: 1.05;
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            }
-            .name { color: #333; }
-            .custom { color: #17803d; }
+            .txt { width: 100%; text-align: center; flex: 0 0 auto; overflow: hidden; }
+            .sku { font-weight: 400; font-size: ${FONT_SKU_MM}mm; line-height: 1.05;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+            .name { color: #333; font-size: ${FONT_NAME_MM}mm; line-height: 1.05;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .custom { color: #17803d; font-size: ${FONT_CUSTOM_MM}mm; line-height: 1.05;
+                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           </style>
         </head>
         <body>
@@ -221,13 +179,11 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
               <div class="spacer-bottom"></div>
               ${includeText ? `
                 <div class="txt">
-                  <div class="sku" style="font-weight:400">${item.sku}</div>
+                  <div class="sku">${item.sku}</div>
                   <div class="name">${item.name || ""}</div>
                   ${item.customText ? `<div class="custom">${item.customText}</div>` : ""}
                 </div>` : ""}
-            </div>
-
-          `).join("")}
+            </div>`).join("")}
           <script>
             (function () {
               function waitAllImages() {
@@ -248,35 +204,17 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
       </html>
     `;
 
-    // Hidden iframe printing
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
-    iframe.style.right = "0"; iframe.style.bottom = "0";
-    iframe.style.width = "0"; iframe.style.height = "0";
-    iframe.style.border = "0";
+    iframe.style.width = "0"; iframe.style.height = "0"; iframe.style.border = "0";
     document.body.appendChild(iframe);
 
     const doc = iframe.contentDocument || iframe.contentWindow.document;
     doc.open(); doc.write(html); doc.close();
-
-    const cleanup = () => setTimeout(() => {
-      if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
-    }, 1000);
-    if (iframe.contentWindow) {
-      iframe.contentWindow.onafterprint = cleanup;
-      iframe.contentWindow.addEventListener("visibilitychange", () => {
-        if (iframe.contentDocument.visibilityState !== "visible") cleanup();
-      });
-    } else {
-      setTimeout(cleanup, 5000);
-    }
   };
 
-
-  /** ---------------- ZIP export: per-item label PNG (50mm x 30mm layout) ---------------- */
+  /** ZIP export */
   const handleDownloadAll = async () => {
-
-
     const list = buildItemsList();
     if (!list.length) {
       toast.warning("Nothing to export.");
@@ -284,15 +222,8 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
     }
 
     const zip = new JSZip();
-
-    // Hidden host for accurate html2canvas layout
     const host = document.createElement("div");
-    host.style.position = "fixed";
-    host.style.left = "-99999px";
-    host.style.top = "0";
-    host.style.width = "0";
-    host.style.height = "0";
-    host.style.overflow = "hidden";
+    host.style.position = "fixed"; host.style.left = "-99999px"; host.style.top = "0";
     document.body.appendChild(host);
 
     try {
@@ -300,8 +231,7 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
       const labelH = mm2px(LABEL_H_MM);
       const padPx  = mm2px(INNER_PAD_MM);
       const qrPx   = mm2px(QR_BOX_MM);
-      const topH = mm2px(SPACER_TOP_MM);
-      const botH = mm2px(SPACER_BOTTOM_MM);
+
       for (const item of list) {
         const qrUrl = await generateQrDataUrl(item.data, PRINT_QR_PX);
 
@@ -313,285 +243,171 @@ const QRCodeGenerator = ({ product, open, onClose }) => {
         wrapper.style.flexDirection = "column";
         wrapper.style.alignItems = "center";
         wrapper.style.background = "#fff";
-        wrapper.style.boxSizing = "border-box";
         host.appendChild(wrapper);
 
-        // Top spacer (was flex:1)
-        const spacerTop = document.createElement("div");
-        spacerTop.style.width = "100%";
-        spacerTop.style.height = `${topH}px`;   // fixed smaller height
-        wrapper.appendChild(spacerTop);
+// Top spacer
+const topSpacer = document.createElement("div");
+topSpacer.style.height = `${mm2px(SPACER_TOP_MM)}px`;
+wrapper.appendChild(topSpacer);
 
-        const qr = document.createElement("div");
-        qr.style.width = `${qrPx}px`;
-        qr.style.height = `${qrPx}px`;
-        qr.style.display = "flex";
-        qr.style.alignItems = "center";
-        qr.style.justifyContent = "center";
-        qr.style.flex = `0 0 ${qrPx}px`;
-        wrapper.appendChild(qr);
+// QR code
+const qr = document.createElement("img");
+qr.src = qrUrl;
+qr.width = qrPx; qr.height = qrPx;
+wrapper.appendChild(qr);
 
-        const img = document.createElement("img");
-        img.src = qrUrl;
-        img.width = qrPx;
-        img.height = qrPx;
-        img.style.display = "block";
-        qr.appendChild(img);
+// Bottom spacer
+const bottomSpacer = document.createElement("div");
+bottomSpacer.style.height = `${mm2px(SPACER_BOTTOM_MM)}px`;
+wrapper.appendChild(bottomSpacer);
 
-        // Bottom spacer (was flex:1)
-        const spacerBottom = document.createElement("div");
-        spacerBottom.style.width = "100%";
-        spacerBottom.style.height = `${botH}px`; // fixed smaller height
-        wrapper.appendChild(spacerBottom);
+// Text block
+if (includeText) {
+  const txt = document.createElement("div");
+  txt.style.width = "100%";
+  txt.style.textAlign = "center";
 
-        if (includeText) {
-          const txt = document.createElement("div");
-          txt.style.width = "100%";
-          txt.style.textAlign = "center";
-          txt.style.flex = "0 0 auto";
-          txt.style.overflow = "hidden";
-          wrapper.appendChild(txt);
+  const sku = document.createElement("div");
+  sku.style.fontSize = `${mm2px(FONT_SKU_MM)}px`;
+  sku.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+  sku.textContent = item.sku;
+  txt.appendChild(sku);
 
-          const toPxFont = (mm) => `${(mm2px(mm) / (96/25.4))}px`; // mm → px (font-size context)
+  if (item.name) {
+    const name = document.createElement("div");
+    name.style.fontSize = `${mm2px(FONT_NAME_MM)}px`;
+    name.style.color = "#333";
+    name.textContent = item.name;
+    name.style.marginTop = "-5px"; 
+    txt.appendChild(name);
+  }
 
-          const sku = document.createElement("div");
-          sku.textContent = item.sku;
-          sku.style.fontWeight = "400";
-          sku.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-          sku.style.fontSize = toPxFont(3.0);
-          sku.style.lineHeight = "1.05";
-          sku.style.whiteSpace = "nowrap";
-          sku.style.overflow = "hidden";
-          sku.style.textOverflow = "ellipsis";
-          txt.appendChild(sku);
+  if (item.customText) {
+    const custom = document.createElement("div");
+    custom.style.fontSize = `${mm2px(FONT_CUSTOM_MM)}px`;
+    custom.style.color = "#17803d";
+    custom.textContent = item.customText;
+    txt.appendChild(custom);
+  }
 
-          const name = document.createElement("div");
-          name.textContent = item.name || "";
-          name.style.color = "#333";
-          name.style.fontSize = toPxFont(2.4);
-          name.style.lineHeight = "1.05";
-          name.style.whiteSpace = "nowrap";
-          name.style.overflow = "hidden";
-          name.style.textOverflow = "ellipsis";
-          txt.appendChild(name);
+  wrapper.appendChild(txt);
+}
 
-          if (item.customText) {
-            const custom = document.createElement("div");
-            custom.textContent = item.customText;
-            custom.style.color = "#17803d";
-            custom.style.fontSize = toPxFont(2.4);
-            custom.style.lineHeight = "1.05";
-            custom.style.whiteSpace = "nowrap";
-            custom.style.overflow = "hidden";
-            custom.style.textOverflow = "ellipsis";
-            txt.appendChild(custom);
-          }
-        }
-
-        // Wait for QR to decode before rasterizing
-        if (img.decode) { try { await img.decode(); } catch (_) {} }
-        else if (!img.complete) { await new Promise((res) => { img.onload = res; img.onerror = res; }); }
 
         const canvas = await html2canvas(wrapper, { backgroundColor: "#fff", scale: EXPORT_SCALE });
         const url = canvas.toDataURL("image/png");
         const fname = sanitizeFileName(item.sku || "qr") + ".png";
         zip.file(fname, url.split(",")[1], { base64: true });
 
-        host.removeChild(wrapper); // free memory
+        host.removeChild(wrapper);
       }
 
       const blob = await zip.generateAsync({ type: "blob" });
-      saveAs(blob, "labels-50x30mm.zip");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to build ZIP.");
+      const baseName = sanitizeFileName(products[0]?.name || "labels");
+      const productId = products[0]?.id || "item";
+      saveAs(blob, `${productId}_${baseName}_50x30.zip`);
+
     } finally {
       if (host && host.parentNode) host.parentNode.removeChild(host);
     }
   };
 
-
-  if (!product) return null;
-
-  /** ---------------- UI handlers ---------------- */
-  const onModeChange = (e) => {
-    const v = e.target.value;
-    setMode(v);
-    if (v === "items") {
-      setRangeFrom((prev) => clampMin(prev, 1));
-      setRangeTo((prev) => clampMin(hasMax ? rawMaxQty : prev, 1));
-    }
-  };
-  const onRangeFromChange = (e) => {
-    const v = clampMin(e.target.value, 1);
-    setRangeFrom(v);
-    if (v > rangeTo) setRangeTo(v);
-  };
-  const onRangeToChange = (e) => {
-    const v = clampMin(e.target.value, 1);
-    setRangeTo(Math.max(v, rangeFrom));
-  };
+  if (!products.length) return null;
 
   return (
     <Modal isOpen={open} toggle={onClose} size="lg" centered>
       <ModalHeader toggle={onClose}>
-        QR Code Generator - {product.name}
+        QR Code Generator
       </ModalHeader>
       <ModalBody>
         <Row>
-          {/* Left: Settings */}
-          <Col md={4}>
-            <Card className="h-100">
-              <CardBody>
-                <h5 className="mb-3">QR Code Settings</h5>
-
-                <FormGroup>
-                  <Label>Mode</Label>
-                  <Input type="select" value={mode} onChange={onModeChange}>
-                    <option value="product">Product (1 QR)</option>
-                    <option value="items">Items (each unit)</option>
-                  </Input>
-                </FormGroup>
-
-                {mode === "items" && (
-                  <FormGroup>
-                    <Label>Quantity Range</Label>
-                    <div className="d-flex gap-2 align-items-center">
-                      <Input
-                        type="number"
-                        min="1"
-                        {...(hasMax ? { max: maxQty } : {})}
-                        value={rangeFrom}
-                        onChange={onRangeFromChange}
-                      />
-                      <span>to</span>
-                      <Input
-                        type="number"
-                        min="1"
-                        {...(hasMax ? { max: maxQty } : {})}
-                        value={rangeTo}
-                        onChange={onRangeToChange}
-                      />
-                    </div>
-                    <small className="text-muted">
-                      Available: {hasMax ? maxQty : "n/a"}
-                    </small>
-                  </FormGroup>
-                )}
-
-                <FormGroup>
-                  <Label>Format</Label>
-                  <Input type="select" value={format} onChange={(e) => setFormat(e.target.value)}>
-                    <option value="sku">Standard (SKU)</option>
-                    <option value="serial">Serial (unique)</option>
-                  </Input>
-                </FormGroup>
-
-                <FormGroup>
-                  <Label>Preview Size</Label>
-                  <Input type="select" value={size} onChange={(e) => setSize(Number(e.target.value))}>
-                    <option value={150}>Small (150px)</option>
-                    <option value={200}>Medium (200px)</option>
-                    <option value={250}>Large (250px)</option>
-                  </Input>
-                </FormGroup>
-
-                <FormGroup check className="mb-3">
-                  <Input
-                    type="checkbox"
-                    checked={includeText}
-                    onChange={(e) => setIncludeText(e.target.checked)}
-                  />{" "}
-                  Include text on label
-                </FormGroup>
-
-                <FormGroup>
-                  <Label>Custom Text (optional)</Label>
-                  <Input
-                    value={customText}
-                    onChange={(e) => setCustomText(e.target.value)}
-                    placeholder="Additional text"
-                  />
-                </FormGroup>
-
-                <div className="mt-3">
-                  <Label>QR Data Preview</Label>
-                  <Input type="textarea" value={previewData} readOnly />
-                  <div className="d-flex gap-2 mt-2">
-                    <Button
-                      color="secondary"
-                      size="sm"
-                      onClick={() => navigator.clipboard.writeText(previewData)}
-                    >
-                      Copy Data
-                    </Button>
-                    <Button color="warning" size="sm" onClick={refreshPreview}>
-                      <i className="ri-refresh-line me-1" />
-                      Generate
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <small className="text-muted">
-                    Print layout: <strong>50mm × 30mm</strong> (landscape).
-                  </small>
-                </div>
-              </CardBody>
-            </Card>
-          </Col>
-
-          {/* Right: Preview */}
-          <Col md={8}>
+          {/* Right: Preview only */}
+          <Col md={12}>
             <Card className="h-100">
               <CardBody className="text-center">
                 <h5 className="mb-3">Preview</h5>
+                <p className="text-muted mb-3">
+                  Generating QR codes for <strong>{products.length}</strong> item{products.length > 1 ? "s" : ""}.
+                </p>
 
                 <div
                   ref={qrWrapperRef}
-                  className="p-3 d-inline-block bg-white"
-                  style={{ border: "1px solid #eee", borderRadius: 8 }}
+                  className="bg-white d-inline-flex flex-column align-items-center"
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 8,
+                    width: `${mm2px(LABEL_W_MM) * scaleFactor}px`,
+                    height: `${mm2px(LABEL_H_MM) * scaleFactor}px`,
+                    padding: `${mm2px(INNER_PAD_MM) * scaleFactor}px`,
+                  }}
                 >
-                  {previewUrl ? (
-                    <img src={previewUrl} width={size} height={size} alt="QR Preview" />
-                  ) : (
-                    <div
-                      style={{
-                        width: size,
-                        height: size,
-                        display: "grid",
-                        placeItems: "center",
-                        border: "1px dashed #ccc",
-                      }}
-                    >
-                      generating…
-                    </div>
-                  )}
+                  {/* Top spacer */}
+                  <div style={{ height: `${topSpacerPx}px` }} />
 
-                  {/* Preview text block (just for UI) */}
-                  <>
-                    {includeText && (
-                      <>
-                        <div className="mt-2">{product.sku}</div> {/* no fw-bold */}
-                        <div className="text-muted">{product.name}</div>
-                        {customText && <div className="text-success">{customText}</div>}
-                      </>
+                  {/* Content area */}
+                  <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1">
+                    {previewUrl ? (
+                      <img
+                        src={previewUrl}
+                        style={{
+                          width: `${mm2px(QR_BOX_MM) * scaleFactor}px`,
+                          height: `${mm2px(QR_BOX_MM) * scaleFactor}px`,
+                          marginBottom: "4px",
+                        }}
+                        alt="QR Preview"
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: `${mm2px(QR_BOX_MM) * scaleFactor}px`,
+                          height: `${mm2px(QR_BOX_MM) * scaleFactor}px`,
+                          display: "grid",
+                          placeItems: "center",
+                          border: "1px dashed #ccc",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        generating…
+                      </div>
                     )}
-                  </>
+
+                    {includeText && products[0] && (
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ fontSize: `${mm2px(FONT_SKU_MM) * scaleFactor}px` }}>
+                          {products[0].sku}
+                        </div>
+                        <div
+                          className=""
+                          style={{
+                            marginTop: "2px",
+                            fontSize: `${mm2px(FONT_NAME_MM) * scaleFactor}px`,
+                          }}
+                        >
+                          {products[0].name}
+                        </div>
+                        {customText && (
+                          <div
+                            className="text-success"
+                            style={{ fontSize: `${mm2px(FONT_CUSTOM_MM) * scaleFactor}px` }}
+                          >
+                            {customText}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bottom spacer */}
+                  <div style={{ height: `${bottomSpacerPx}px` }} />
                 </div>
 
                 <div className="mt-3 d-flex justify-content-center gap-2 flex-wrap">
-                  <Button color="light" onClick={handleDownload}>
-                    <i className="ri-download-2-line me-1" /> Download
-                  </Button>
                   <Button color="light" onClick={handlePrint}>
                     <i className="ri-printer-line me-1" /> Print (50×30 mm)
                   </Button>
-                  {mode === "items" && (
-                    <Button color="dark" onClick={handleDownloadAll}>
-                      <i className="ri-download-cloud-2-line me-1" /> Download All (labels)
-                    </Button>
-                  )}
+                  <Button color="dark" onClick={handleDownloadAll}>
+                    <i className="ri-download-cloud-2-line me-1" /> Download
+                  </Button>
                 </div>
               </CardBody>
             </Card>

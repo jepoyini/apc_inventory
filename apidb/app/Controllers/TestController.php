@@ -11,8 +11,8 @@ class TestController extends ResourceController
 {
     public function helloWorld()
     {
-
-      echo "test";
+      $ip_location =  getIPLocation('120.29.76.74'); 
+      echo $ip_location;
       die; 
 
 $ip = "120.29.76.119";

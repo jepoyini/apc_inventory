@@ -9,6 +9,20 @@ include 'app/Helpers/functions.php';
 
 class WarehouseController extends ResourceController
 {
+    /** GET /warehouses/list */
+    public function list()
+    {
+        global $conn;
+        $sql = "SELECT id, name FROM warehouses WHERE status='Active'";
+        $result = $conn->query($sql);
+
+        $rows = [];
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+
+        return $this->respond(['warehouses' => $rows]);
+    }
 
 
     public function getWarehousesStat()
@@ -83,7 +97,7 @@ class WarehouseController extends ResourceController
         $stmt->close();
 
         // page list
-        $listSql    = "SELECT id, name, location, manager, status, capacity, current_stock, created_at
+        $listSql    = "SELECT id, name, location, manager, status, capacity, current_stock, created_at, logo 
                        FROM warehouses {$sqlWhere}
                        ORDER BY created_at DESC
                        LIMIT ? OFFSET ?";
@@ -134,7 +148,13 @@ class WarehouseController extends ResourceController
     public function create()
     {
         global $conn;
-        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+        // Detect form-data vs JSON
+        if (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'multipart/form-data')) {
+            $p = $_POST;
+        } else {
+            $p = json_decode(file_get_contents("php://input"), true) ?? [];
+        }
 
         if (empty($p['name']) || empty($p['location']) || empty($p['manager'])) {
             return $this->failValidationErrors('name, location, manager are required');
@@ -144,10 +164,12 @@ class WarehouseController extends ResourceController
         $capacity = (int)($p['capacity'] ?? 0);
         $current  = (int)($p['current_stock'] ?? 0);
 
+        // Insert without logo first
         $sql = "INSERT INTO warehouses (name, location, manager, status, capacity, current_stock)
                 VALUES (?, ?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssssii",
+        $stmt->bind_param(
+            "ssssii",
             $p['name'],
             $p['location'],
             $p['manager'],
@@ -159,22 +181,65 @@ class WarehouseController extends ResourceController
         $newId = $stmt->insert_id;
         $stmt->close();
 
-        if (!$ok) return $this->fail('Insert failed');
+        if (!$ok || !$newId) {
+            return $this->fail('Insert failed');
+        }
 
-        return $this->respondCreated(['warehouse_id' => $newId]);
+        $relativePath = null;
+
+        // Handle file upload (logo)
+        if (!empty($_FILES['logo']['name'])) {
+            $baseDir   = "/home/apc/public_html/apidb/uploads/warehouses/";
+            $uploadDir = $baseDir . intval($newId) . "/";
+
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true); // make sure webserver can write here
+            }
+
+            $ext = pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION);
+            $filename = "logo_" . time() . "." . $ext;
+            $target   = $uploadDir . $filename;
+
+            if (move_uploaded_file($_FILES['logo']['tmp_name'], $target)) {
+                $relativePath = "uploads/warehouses/" . intval($newId) . "/" . $filename;
+
+                // Update logo field in DB
+                $sql = "UPDATE warehouses SET logo=? WHERE id=?";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("si", $relativePath, $newId);
+                $stmt->execute();
+                $stmt->close();
+            } else {
+                return $this->fail("Logo upload failed");
+            }
+        }
+
+        return $this->respondCreated([
+            'warehouse_id' => $newId,
+            'logo'         => $relativePath
+        ]);
     }
+
 
     /** POST /warehouses/{id}/update */
     public function update($id = null)
     {
         global $conn;
-        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
         if (!$id) return $this->failValidationErrors('Missing id');
 
         $fields = [];
         $vals   = [];
         $types  = "";
 
+        // Detect form-data vs JSON
+        if (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'multipart/form-data')) {
+            $p = $_POST;
+        } else {
+            $p = json_decode(file_get_contents("php://input"), true) ?? [];
+        }
+
+        // Normal fields
         foreach (['name','location','manager','status','capacity','current_stock'] as $k) {
             if (array_key_exists($k, $p)) {
                 $fields[] = "$k=?";
@@ -185,6 +250,30 @@ class WarehouseController extends ResourceController
                     $vals[]  = $p[$k];
                     $types  .= "s";
                 }
+            }
+        }
+        // File upload (logo)
+        if (!empty($_FILES['logo']['name'])) {
+            $baseDir   = "/home/apc/public_html/apidb/uploads/warehouses/";
+            //return $this->failValidationErrors($baseDir);
+            $uploadDir = $baseDir . intval($id) . "/";
+
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+            }
+
+            $ext = pathinfo($_FILES['logo']['name'], PATHINFO_EXTENSION);
+            $filename = "logo_" . time() . "." . $ext;
+            $target   = $uploadDir . $filename;
+
+            if (move_uploaded_file($_FILES['logo']['tmp_name'], $target)) {
+                // save relative path for web access
+                $relativePath = "uploads/warehouses/" . intval($id) . "/" . $filename;
+                $fields[] = "logo=?";
+                $vals[]   = $relativePath;
+                $types   .= "s";
+            } else {
+                return $this->fail("Logo upload failed");
             }
         }
 
@@ -201,8 +290,12 @@ class WarehouseController extends ResourceController
 
         if (!$ok) return $this->fail('Update failed');
 
-        return $this->respond(['updated'=>true]);
+        return $this->respond([
+            'updated' => true,
+            'logo'    => $relativePath ?? null
+        ]);
     }
+
 
     /** POST /warehouses/{id}/delete */
     public function delete($id = null)

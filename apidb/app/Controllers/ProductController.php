@@ -10,6 +10,194 @@ include 'app/Helpers/functions.php';
 class ProductController extends ResourceController
 {
 
+
+public function recent()
+{
+    global $conn;
+    $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+    $limit  = max(1, min(50, (int)($p['limit'] ?? 10))); // default 10
+    $offset = max(0, (int)($p['offset'] ?? 0));
+
+    // 🔹 default: last 30 days
+    $days = isset($p['days']) ? (int)$p['days'] : 30;
+
+    $sql = "
+        SELECT 
+            pt.id, pt.product_id, pt.user_id, pt.status, pt.created_at,
+            p.name AS product_name,
+            (
+                SELECT pi.url 
+                FROM product_images pi 
+                WHERE pi.product_id = pt.product_id and pi.is_primary = 1  
+                ORDER BY pi.is_primary DESC, pi.id ASC 
+                LIMIT 1
+            ) AS primary_image,
+            CONCAT(u.firstname, ' ', u.lastname) AS user_name,
+            w.name AS warehouse_name
+        FROM product_tracking pt
+        LEFT JOIN products p ON pt.product_id = p.id
+        LEFT JOIN users u ON pt.user_id = u.id
+        LEFT JOIN warehouses w ON pt.warehouse_id = w.id
+        WHERE pt.created_at >= (NOW() - INTERVAL ? DAY)
+        ORDER BY pt.created_at DESC
+        LIMIT ? OFFSET ?
+    ";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("iii", $days, $limit, $offset);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    return $this->respond([
+        'activities' => $rows,
+        'limit'      => $limit,
+        'offset'     => $offset,
+        'days'       => $days
+    ]);
+}
+
+
+
+        public function items($productId = null)
+        {
+            global $conn;
+
+            if (!$productId) {
+                return $this->failValidationErrors("Missing productId");
+            }
+
+            try {
+                $stmt = $conn->prepare("
+                    SELECT i.id, i.product_id, i.serial, i.batch, i.qr_code,
+                           i.current_warehouse_id, w.name as warehouse_name,
+                           i.location_code, i.condition_label, i.status, i.notes,
+                           i.acquired_at, i.created_at, i.updated_at
+                    FROM items i
+                    LEFT JOIN warehouses w ON w.id = i.current_warehouse_id
+                    WHERE i.product_id = ?
+                    ORDER BY i.id DESC
+                ");
+                $stmt->bind_param("i", $productId);
+                $stmt->execute();
+                $res = $stmt->get_result();
+
+                $items = [];
+                while ($row = $res->fetch_assoc()) {
+                    $items[] = [
+                        "id"                  => (int)$row["id"],
+                        "product_id"          => (int)$row["product_id"],
+                        "serial"     => $row["serial"],
+                        "batch"     => $row["batch"],
+                        "qr_code"             => $row["qr_code"],
+                        "current_warehouse_id"=> $row["current_warehouse_id"] ? (int)$row["current_warehouse_id"] : null,
+                        "warehouse_name"      => $row["warehouse_name"] ?? null,
+                        "location_code"       => $row["location_code"],
+                        "condition_label"     => $row["condition_label"],
+                        "status"              => $row["status"],
+                        "acquired_at"         => $row["acquired_at"],
+                        "created_at"          => $row["created_at"],
+                        "updated_at"          => $row["updated_at"],
+                        "notes"              => $row["notes"],
+                    ];
+                }
+                $stmt->close();
+
+                return $this->respond([
+                    "status" => "success",
+                    "items" => $items
+                ]);
+            } catch (\Exception $e) {
+                return $this->fail($e->getMessage());
+            }
+        }
+
+    /** GET /warehouses/list */
+    public function listWarehouses()
+    {
+        global $conn;
+        $sql = "SELECT id, name FROM warehouses WHERE status='Active'";
+        $result = $conn->query($sql);
+
+        $rows = [];
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+
+        return $this->respond(['warehouses' => $rows]);
+    }
+
+    /** POST /items/create */
+    public function createItem()
+    {
+        global $conn;
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+        // validation
+        foreach (['product_id','serial','current_warehouse_id','condition_label','status','acquired_at'] as $k) {
+            if (empty($p[$k])) return $this->failValidationErrors("$k is required");
+        }
+
+        $sql = "INSERT INTO items 
+            (product_id, serial, current_warehouse_id, location_code, condition_label, status, acquired_at, created_at) 
+            VALUES (?,?,?,?,?,?,?,NOW())";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param(
+            "isissss",
+            $p['product_id'],
+            $p['serial'],
+            $p['current_warehouse_id'],
+            $p['location_code'],
+            $p['condition_label'],
+            $p['status'],
+            $p['acquired_at']
+        );
+        $ok = $stmt->execute();
+        $id = $stmt->insert_id;
+        $stmt->close();
+
+        if (!$ok) return $this->fail("Insert failed");
+
+        return $this->respondCreated(['id'=>$id]);
+    }
+
+    /** POST /items/{id}/update */
+    // public function updateItem($id = null)
+    // {
+    //     global $conn;
+    //     if (!$id) return $this->failValidationErrors("Missing id");
+
+    //     $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+    //     $sql = "UPDATE items SET 
+    //         serial=?, 
+    //         current_warehouse_id=?, 
+    //         location_code=?, 
+    //         condition_label=?, 
+    //         status=?, 
+    //         acquired_at=?, 
+    //         updated_at=NOW()
+    //         WHERE id=?";
+    //     $stmt = $conn->prepare($sql);
+    //     $stmt->bind_param(
+    //         "sissssi",
+    //         $p['serial'],
+    //         $p['current_warehouse_id'],
+    //         $p['location_code'],
+    //         $p['condition_label'],
+    //         $p['status'],
+    //         $p['acquired_at'],
+    //         $id
+    //     );
+    //     $ok = $stmt->execute();
+    //     $stmt->close();
+
+    //     if (!$ok) return $this->fail("Update failed");
+
+    //     return $this->respond(['updated'=>true]);
+    // }
+
     public function lookup()
     {
         $db = \Config\Database::connect();
@@ -25,12 +213,12 @@ class ProductController extends ResourceController
 
         // Try to match code against items or products
         $builder = $db->table('items i')
-            ->select('i.id as item_id, i.serial_or_batch as code, 
+            ->select('i.id as item_id, i.serial as code, 
                       p.id as product_id, p.name, p.sku, 
                       pi.url as primary_image')
             ->join('products p', 'p.id=i.product_id')
             ->join('product_images pi', 'pi.product_id=p.id AND pi.is_primary=1', 'left')
-            ->where('i.serial_or_batch', $code);
+            ->where('i.serial', $code);
 
         $row = $builder->get()->getRowArray();
 
@@ -46,59 +234,187 @@ class ProductController extends ResourceController
             'data'   => $row
         ]);
     }
-    
-    public function scan()
-    {
-        $db = \Config\Database::connect();
-        $req = $this->request->getJSON(true);
 
-        $code        = trim($req['code'] ?? '');
-        $action      = $req['action'] ?? null;
-        $warehouseId = $req['warehouse_id'] ?? null; // ✅ new
-        $userId      = session()->get('uid');
+    public function sca22()
+    {
+        global $conn;
+
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+        $code        = trim($p['code'] ?? '');
+        $action      = $p['action'] ?? null;
+        $warehouseId = $p['warehouse_id'] ?? null;
+        $userId      = $p['uid'] ?? null;
 
         if (!$code) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Missing code']);
+            return $this->respond(['status' => 'error', 'message' => 'Missing code']);
         }
 
         try {
             $productId = null;
 
             // 🔹 Lookup by item serial/batch
-            $item = $db->table('items')
-                ->select('id, product_id')
-                ->where('serial_or_batch', $code)
-                ->get()->getRowArray();
+            $stmt = $conn->prepare("SELECT id, product_id FROM items WHERE serial=? LIMIT 1");
+            $stmt->bind_param("s", $code);
+            $stmt->execute();
+            $item = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
 
             if ($item) {
                 $productId = $item['product_id'];
             } else {
                 // 🔹 fallback: product by SKU
-                $product = $db->table('products')
-                    ->select('id')
-                    ->where('sku', $code)
-                    ->get()->getRowArray();
+                $stmt = $conn->prepare("SELECT id FROM products WHERE sku=? LIMIT 1");
+                $stmt->bind_param("s", $code);
+                $stmt->execute();
+                $prod = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
 
-                if (!$product) {
-                    return $this->response->setJSON([
+                if (!$prod) {
+                    return $this->respond([
                         'status'  => 'error',
                         'message' => 'Code not found'
                     ]);
                 }
-                $productId = $product['id'];
+
+                $productId = $prod['id'];
+            }
+
+            // 🔹 Insert tracking record
+            $stmt = $conn->prepare("
+                INSERT INTO product_tracking (product_id, tracking_code, action, user_id, warehouse_id, created_at)
+                VALUES (?, ?, ?, ?, ?, NOW())
+            ");
+            $stmt->bind_param("issii", $productId, $code, $action, $userId, $warehouseId);
+            $stmt->execute();
+            $stmt->close();
+
+            // 🔹 Fetch product info with image
+            $sql = "
+                SELECT p.id, p.sku, p.name, p.category, pi.url as primary_image
+                FROM products p
+                LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.is_primary = 1
+                WHERE p.id = ?
+                LIMIT 1
+            ";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("i", $productId);
+            $stmt->execute();
+            $productData = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            // 🔹 Fetch warehouse name
+            $warehouseName = null;
+            if ($warehouseId) {
+                $stmt = $conn->prepare("SELECT name FROM warehouses WHERE id=? LIMIT 1");
+                $stmt->bind_param("i", $warehouseId);
+                $stmt->execute();
+                $w = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+                $warehouseName = $w['name'] ?? null;
+            }
+
+            // 🔹 Activity log
+            add_activity_log($userId, 'scanned', json_encode([
+                'product_id'     => $productId,
+                'name'           => $productData['name'] ?? null,
+                'tracking_code'  => $code,
+                'warehouse_name' => $warehouseName
+            ]));
+
+            // 🔹 Response
+            return $this->respond([
+                'status'         => 'success',
+                'message'        => 'Scan saved',
+                'product'        => $productData,
+                'product_id'     => $productId,
+                'name'           => $productData['name'] ?? null,
+                'primary_image'  => $productData['primary_image'] ?? null,
+                'tracking_code'  => $code,
+                'action'         => $action,
+                'warehouse_name' => $warehouseName
+            ]);
+
+        } catch (\Exception $e) {
+            return $this->respond([
+                'status'  => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function scan()
+    {
+   
+        $db = \Config\Database::connect();
+        $req = $this->request->getJSON(true);
+
+        $code        = trim($req['code'] ?? '');
+        $action      = $req['action'] ?? null;
+        $warehouseId = $req['warehouse_id'] ?? null; // ✅ new
+        $userId      = $req['uid'] ?? null;
+
+        if (!$code) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Missing code']);
+        }
+        if (!$action) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'No Action Selected!']);
+        }
+        try {
+
+            $productId = null;
+            $item_id = null; 
+            $serial = preg_replace('/-\d+$/', '', $code);
+
+            // 🔹 Lookup by item serial/batch
+            $item = $db->table('items')
+                ->select('id, product_id')
+                ->where('serial', $code)
+                ->get()->getRowArray();
+
+            if (!$item) {
+                    return $this->response->setJSON([
+                        'status'  => 'error',
+                        'message' => 'Item not found'
+                    ]);
+            }
+
+            $productId = $item['product_id'];
+
+            $product = $db->table('products')
+                ->select('id')
+                ->where('id', $productId)
+                ->get()->getRowArray();
+            if (!$product) {
+                    return $this->response->setJSON([
+                        'status'  => 'error',
+                        'message' => 'Code not found'
+                    ]);
             }
 
             // 🔹 Insert tracking record
             $trackingData = [
                 'product_id'    => $productId,
+                'item_id'       => $item_id,
                 'tracking_code' => $code,
-                'action'        => $action,
+                'action'        => 'scan',
+                'status'        => $action,
                 'user_id'       => $userId,
+                'warehouse_id'  => $warehouseId,
                 'created_at'    => date('Y-m-d H:i:s'),
             ];
-
-            $trackingData['warehouse_id'] = $warehouseId;
             $db->table('product_tracking')->insert($trackingData);
+
+            // 🔹 Update item status (only update warehouse if given)
+            $itemUpdate = ['status' => $action];
+            if (!empty($warehouseId)) {
+                $itemUpdate['current_warehouse_id'] = $warehouseId;
+            }
+
+            $db->table('items')
+                ->where('serial', $code)
+                ->update($itemUpdate);
+
 
             // 🔹 Fetch product info with image
             $productData = $db->table('products p')
@@ -115,7 +431,15 @@ class ProductController extends ResourceController
                 $warehouseName = $w['name'] ?? null;
             }
 
-            return $this->response->setJSON([
+           // Add activity Log
+            add_activity_log($userId,'scanned',json_encode([
+                'product_id' => $productId,
+                'name' => $productData['name'] ?? null,
+                'tracking_code' => $code,
+                'warehouse_name' => $warehouseName
+            ])); 
+
+            $res = [
                 'status' => 'success',
                 'message' => 'Scan saved',
                 'product' => $productData,
@@ -125,7 +449,8 @@ class ProductController extends ResourceController
                 'tracking_code' => $code,
                 'action' => $action,
                 'warehouse_name' => $warehouseName
-            ]);
+            ];
+            return $this->response->setJSON($res);
 
         } catch (\Exception $e) {
             return $this->response->setJSON([
@@ -154,7 +479,7 @@ class ProductController extends ResourceController
             // 🔹 Try to match by item serial/batch
             $builder = $db->table('items');
             $builder->select('id, product_id');
-            $builder->where('serial_or_batch', $code);
+            $builder->where('serial', $code);
             $item = $builder->get()->getRowArray();
 
             if ($item) {
@@ -462,12 +787,24 @@ class ProductController extends ResourceController
         $params = [];
         $types  = '';
 
-        if ($search !== '') {
-            $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
-            $like = "%{$search}%";
-            array_push($params, $like, $like, $like);
-            $types .= 'sss';
-        }
+if ($search !== '') {
+    // ✅ allow searching by id (exact match if numeric, or LIKE if string)
+    if (ctype_digit($search)) {
+        // if the search is all digits, check exact id match + other LIKE fields
+        $where[] = "(p.id = ? OR p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+        $id = (int)$search;
+        $like = "%{$search}%";
+        array_push($params, $id, $like, $like, $like);
+        $types .= 'isss';
+    } else {
+        // non-numeric, fallback to LIKE search
+        $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+        $like = "%{$search}%";
+        array_push($params, $like, $like, $like);
+        $types .= 'sss';
+    }
+}
+
         if ($category !== '') {
             $where[] = "p.category = ?";
             $params[] = $category; $types .= 's';
@@ -687,9 +1024,31 @@ class ProductController extends ResourceController
 
         $fields = []; $vals = []; $types = '';
         $map = [
-            'sku'=>'s','name'=>'s','category'=>'s','status'=>'s',
-            'price'=>'d','cost'=>'d','default_warehouse_id'=>'i','reorder_point'=>'i',
-            'brand'=>'s','model'=>'s','description'=>'s'
+            'sku' => 's',
+            'name' => 's',
+            'category' => 's',
+            'status' => 's',
+            'price' => 'd',
+            'cost' => 'd',
+            'default_warehouse_id' => 'i',
+            'reorder_point' => 'i',
+            'max_stock' => 'i',   // ✅ new field
+            'brand' => 's',
+            'model' => 's',
+            'description' => 's',
+
+            // ✅ specification fields
+            'length' => 's',
+            'width' => 's',
+            'height' => 's',
+            'weight' => 's',
+            'material' => 's',
+            'base' => 's',
+            'engraving' => 's',
+            'packaging' => 's',
+            'supplier' => 's',
+            'manufactured' => 's',
+            'warranty' => 's'
         ];
         foreach ($map as $k=>$t) {
             if (array_key_exists($k,$p)) {
@@ -779,7 +1138,7 @@ class ProductController extends ResourceController
 
     //     // Item list
     //     $stmt = $conn->prepare("
-    //         SELECT id, serial_or_batch AS serial, location_code, condition_label, status, acquired_at
+    //         SELECT id, serial AS serial, location_code, condition_label, status, acquired_at
     //         FROM items WHERE product_id=? AND status<>'DISPOSED' ORDER BY id DESC LIMIT 200
     //     ");
     //     $stmt->bind_param("i",$id); $stmt->execute();
@@ -864,16 +1223,22 @@ class ProductController extends ResourceController
         $stmt->bind_param("i",$id); $stmt->execute();
         $images = $stmt->get_result()->fetch_all(MYSQLI_ASSOC); $stmt->close();
 
-        $stock = ['available'=>0,'reserved'=>0,'shipped'=>0,'total'=>0];
-        foreach (['available'=>'IN_STOCK','reserved'=>'RESERVED','shipped'=>'SHIPPED'] as $k=>$label) {
+        $stock = ['available_qty'=>0,'in_stock_qty'=>0,'sold_qty'=>0,'total'=>0,'in_transit_qty'=>0];
+        foreach (['available_qty'=>'AVAILABLE','in_stock_qty'=>'IN_STOCK','sold_qty'=>'SOLD','in_transit_qty'=>'IN_TRANSIT'] as $k=>$label) {
             $stmt = $conn->prepare("SELECT COUNT(*) AS c FROM items WHERE product_id=? AND status=?");
             $stmt->bind_param("is",$id,$label); $stmt->execute();
             $stock[$k] = (int)($stmt->get_result()->fetch_assoc()['c'] ?? 0); $stmt->close();
         }
-        $stock['total'] = $stock['available'] + $stock['reserved'] + $stock['shipped'];
+        //$stock['total'] = $stock['available_qty'] + $stock['reserved'] + $stock['shipped'];
+
+        $res = $conn->prepare("SELECT COUNT(*) as cnt FROM items WHERE product_id=? and status <> 'CREATED'");
+        $res->bind_param("i", $id);
+        $res->execute();
+        $row = $res->get_result()->fetch_assoc();
+        $total_qty = (int)($row['cnt'] ?? 0);        
 
         $stmt = $conn->prepare("
-            SELECT id, serial_or_batch AS serial, location_code, condition_label, status, acquired_at
+            SELECT id, serial AS serial, location_code, condition_label, status, acquired_at
             FROM items WHERE product_id=? AND status<>'DISPOSED' ORDER BY id DESC LIMIT 200
         ");
         $stmt->bind_param("i",$id); $stmt->execute();
@@ -906,12 +1271,16 @@ class ProductController extends ResourceController
             $product['primary_image'] = "/images/noimage.png"; 
         }
 
-        // Tracking history
+         // Tracking history
         $stmt = $conn->prepare("
-            SELECT pt.*, CONCAT(u.firstname, ' ', u.lastname) AS fullname
+            SELECT 
+                pt.*, 
+                CONCAT(u.firstname, ' ', u.lastname) AS fullname,
+                w.name AS warehouse_name
             FROM product_tracking pt
             LEFT JOIN users u ON pt.user_id = u.id
-            WHERE pt.product_id=? 
+            LEFT JOIN warehouses w ON pt.warehouse_id = w.id
+            WHERE pt.product_id = ?
             ORDER BY pt.created_at DESC 
             LIMIT 100
         ");
@@ -920,14 +1289,16 @@ class ProductController extends ResourceController
         $tracking = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
+        $product['available_qty'] = $stock['available_qty'];
+        $product['in_stock_qty'] = $stock['in_stock_qty'];
+        $product['in_transit_qty'] = $stock['in_transit_qty'];
+        $product['sold_qty'] = $stock['sold_qty'];
+        $product['total_qty'] =$total_qty ;
+
         return $this->respond([
             'product' => $product,
             'images'  => $images,
             'tracking' => $tracking,
-            'stock'   => [
-                'total'=>$stock['total'],'available'=>$stock['available'],'reserved'=>$stock['reserved'],'shipped'=>$stock['shipped'],
-                'lowAlert'=>(int)($product['reorder_point'] ?? 0),
-            ],
             'items'   => $items,
             'events'  => $events,
             'specs'   => $specs,
@@ -953,68 +1324,177 @@ class ProductController extends ResourceController
         return $this->respondCreated(['image_id'=>$newId]);
     }
 
-    /** POST /products/{id}/items/add  — qty, serial (opt), location_code, condition_label */
-    public function addItem($id = null)
-    {
-        global $conn;
-        $p = json_decode(file_get_contents("php://input"), true) ?? [];
-        if (!$id || empty($p['qty'])) return $this->failValidationErrors('qty required');
-
-        $qty  = max(1, (int)$p['qty']);
-        $ser  = (string)($p['serial'] ?? '');
-        $loc  = (string)($p['location_code'] ?? '');
-        $cond = (string)($p['condition_label'] ?? '');
-
-        $ins = $conn->prepare("
-            INSERT INTO items (product_id, serial_or_batch, location_code, condition_label, status, acquired_at)
-            VALUES (?,?,?,?, 'IN_STOCK', NOW())
-        ");
-        for ($i=0; $i<$qty; $i++) {
-            $s = $ser ? $ser . str_pad((string)($i+1), 3, '0', STR_PAD_LEFT) : null;
-            $ins->bind_param("isss", $id, $s, $loc, $cond);
-            $ins->execute();
-        }
-        $ins->close();
-
-        $this->logEvent((int)$id, 'RECEIVED', 'Items added', (int)$qty, null, null);
-        return $this->respondCreated(['added'=>$qty]);
-    }
+  
 
     /** POST /products/{id}/items/update  — item_id + fields */
     public function updateItem($id = null)
     {
         global $conn;
-        $p = json_decode(file_get_contents("php://input"), true) ?? [];
-        if (!$id || empty($p['item_id'])) return $this->failValidationErrors('item_id required');
 
-        $fields=[]; $vals=[]; $types='';
-        foreach (['serial_or_batch'=>'s','location_code'=>'s','condition_label'=>'s','status'=>'s','acquired_at'=>'s'] as $k=>$t) {
-            if (array_key_exists($k,$p)) { $fields[]="$k=?"; $vals[]=$p[$k]; $types.=$t; }
+        // 🔹 Decode JSON body
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+        $productId   = $p['product_id'] ?? null;
+        $itemIds     = $p['item_ids'] ?? [];
+        $status      = $p['status'] ?? null;
+        $notes       = $p['notes'] ?? '';
+        $warehouseId = $p['warehouse_id'] ?? null;
+        $userId      =  $p['uid'] ?? '';
+
+        if (!$productId || empty($itemIds) || !$status) {
+            return $this->failValidationErrors("product_id, item_ids, and status are required");
         }
-        if (!$fields) return $this->respond(['message'=>'Nothing to update']);
-        $vals[] = (int)$p['item_id']; $types.='i';
 
-        $sql="UPDATE items SET ".implode(',', $fields)." WHERE id=?";
-        $stmt=$conn->prepare($sql); $stmt->bind_param($types, ...$vals); $stmt->execute(); $stmt->close();
+        $conn->begin_transaction();
 
-        return $this->respond(['updated'=>true]);
+        try {
+            foreach ($itemIds as $itemId) {
+                if (!$itemId) {
+                    throw new \Exception("item_id required");
+                }
+
+                // 🔹 1. Update the item
+                if ($warehouseId) {
+                    $stmt = $conn->prepare("
+                        UPDATE items 
+                        SET status=?, notes=?, current_warehouse_id=?, updated_at=NOW() 
+                        WHERE id=? AND product_id=?
+                    ");
+                    $stmt->bind_param("ssiii", $status, $notes, $warehouseId, $itemId, $productId);
+                } else {
+                    $stmt = $conn->prepare("
+                        UPDATE items 
+                        SET status=?, notes=?, updated_at=NOW() 
+                        WHERE id=? AND product_id=?
+                    ");
+                    $stmt->bind_param("ssii", $status, $notes, $itemId, $productId);
+                }
+                $stmt->execute();
+                $stmt->close();
+
+
+                // 🔹 2. Get tracking code (serial) from items table
+                $stmt = $conn->prepare("SELECT serial FROM items WHERE id=? AND product_id=? LIMIT 1");
+                $stmt->bind_param("ii", $itemId, $productId);
+                $stmt->execute();
+                $res = $stmt->get_result();
+                $row = $res->fetch_assoc();
+                $stmt->close();
+
+                $trackingCode = $row ? $row['serial'] : null;
+
+                // 🔹 3. Insert into tracking table
+                $action = "update";  // you can change dynamically
+                $stmt = $conn->prepare("
+                    INSERT INTO product_tracking 
+                        (product_id, item_id, action, tracking_code, status, location, remarks, created_at, warehouse_id, user_id) 
+                    VALUES (?, ?, ?, ?, ?, NULL, ?, NOW(), ?, ?)
+                ");
+                $stmt->bind_param(
+                    "iissssii",
+                    $productId,
+                    $itemId,
+                    $action,
+                    $trackingCode,
+                    $status,
+                    $notes,
+                    $warehouseId,
+                    $userId
+                );
+                $stmt->execute();
+                $stmt->close();
+
+            }
+
+            $conn->commit();
+
+            return $this->respond([
+                "status"  => "success",
+                "message" => "Items updated and tracking records created",
+                "updated" => count($itemIds)
+            ]);
+        } catch (\Throwable $e) {
+            $conn->rollback();
+            return $this->fail("Failed to update items: " . $e->getMessage());
+        }
+
+        // global $conn;
+        // $p = json_decode(file_get_contents("php://input"), true) ?? [];
+        // if (!$id || empty($p['item_id'])) return $this->failValidationErrors('item_id required');
+
+        // $fields=[]; $vals=[]; $types='';
+        // foreach (['serial'=>'s','location_code'=>'s','condition_label'=>'s','status'=>'s','acquired_at'=>'s'] as $k=>$t) {
+        //     if (array_key_exists($k,$p)) { $fields[]="$k=?"; $vals[]=$p[$k]; $types.=$t; }
+        // }
+        // if (!$fields) return $this->respond(['message'=>'Nothing to update']);
+        // $vals[] = (int)$p['item_id']; $types.='i';
+
+        // $sql="UPDATE items SET ".implode(',', $fields)." WHERE id=?";
+        // $stmt=$conn->prepare($sql); $stmt->bind_param($types, ...$vals); $stmt->execute(); $stmt->close();
+
+        // return $this->respond(['updated'=>true]);
     }
 
-    /** POST /products/{id}/items/delete  — item_id */
-    public function deleteItem($id = null)
-    {
-        global $conn;
-        $p = json_decode(file_get_contents("php://input"), true) ?? [];
-        if (!$id || empty($p['item_id'])) return $this->failValidationErrors('item_id required');
+/** POST /products/{id}/items/delete  — item_id or item_ids[] */
+public function deleteItem($id = null)
+{
+    global $conn;
+    $p = json_decode(file_get_contents("php://input"), true) ?? [];
 
-        $stmt = $conn->prepare("DELETE FROM items WHERE id=? AND product_id=?");
-        $stmt->bind_param("ii", $p['item_id'], $id);
-        $stmt->execute(); $aff = $stmt->affected_rows; $stmt->close();
+    if (!$id) return $this->failValidationErrors('Missing product_id');
 
-        if ($aff < 1) return $this->failNotFound('Item not found');
-        $this->logEvent((int)$id, 'DISPOSED', 'Item removed', 1, null, null);
-        return $this->respondDeleted(['deleted'=>true]);
+    // ✅ Support single item_id or multiple item_ids
+    $itemIds = [];
+    if (!empty($p['item_id'])) {
+        $itemIds = [(int)$p['item_id']];
+    } elseif (!empty($p['item_ids']) && is_array($p['item_ids'])) {
+        $itemIds = array_map('intval', $p['item_ids']);
     }
+
+    if (empty($itemIds)) {
+        return $this->failValidationErrors('item_id or item_ids[] required');
+    }
+
+    // Prepare placeholders
+    $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+
+    // ✅ Step 1: delete from product_tracking first
+    $types = str_repeat("i", count($itemIds) + 1); // product_id + item_ids
+    $params = array_merge([(int)$id], $itemIds);
+
+    $stmt = $conn->prepare("DELETE FROM product_tracking WHERE product_id=? AND item_id IN ($placeholders)");
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $deletedTracking = $stmt->affected_rows;
+    $stmt->close();
+
+    // ✅ Step 2: delete from items
+    $types = str_repeat("i", count($itemIds) + 1);
+    $params = array_merge($itemIds, [(int)$id]);
+
+    $stmt = $conn->prepare("DELETE FROM items WHERE id IN ($placeholders) AND product_id=?");
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $deletedItems = $stmt->affected_rows;
+    $stmt->close();
+
+    if ($deletedItems < 1) {
+        return $this->failNotFound('No items deleted');
+    }
+
+    // ✅ Step 3: log events for each deleted item
+    foreach ($itemIds as $itemId) {
+        $this->logEvent((int)$id, 'DISPOSED', "Item $itemId removed", 1, null, $itemId);
+    }
+
+    return $this->respondDeleted([
+        'deleted'   => true,
+        'count'     => $deletedItems,
+        'tracking'  => $deletedTracking,
+        'item_ids'  => $itemIds
+    ]);
+}
+
 
     /** POST /products/{id}/events/add */
     public function addEvent($id = null)
@@ -1130,6 +1610,200 @@ class ProductController extends ResourceController
         $stmt->close();
     }
 
+/** POST /products/{id}/items/add  — qty, serial (opt), batch, warehouse_id, condition_label */
+public function addItem($id = null)
+{
+    global $conn;
+    $p = json_decode(file_get_contents("php://input"), true) ?? [];
 
+    // validate qty
+    $qty = isset($p['qty']) && (int)$p['qty'] > 0 ? (int)$p['qty'] : 1;
+
+    $ser          = trim((string)($p['serial'] ?? '')); // base serial (optional)
+    $batch        = (string)($p['batch'] ?? '');
+    $warehouse_id = (int)($p['warehouse_id'] ?? 0);
+    $condition    = (string)($p['condition'] ?? '');
+    $status       = 'CREATED'; // default
+    $notes        = (string)($p['notes'] ?? '');
+    $id           = (int)($id ?? 0); // product_id must be passed
+    $userId       = ($p['uid'] ?? 0);
+
+    if (!$id) {
+        return $this->failValidationErrors('Missing product_id');
+    }
+
+    // find current count of items for serial auto-generation
+    $res = $conn->prepare("SELECT COUNT(*) as cnt FROM items WHERE product_id=?");
+    $res->bind_param("i", $id);
+    $res->execute();
+    $row = $res->get_result()->fetch_assoc();
+    $res->close();
+
+    $currentCount = (int)($row['cnt'] ?? 0);
+
+    // prepare insert for items
+    $ins = $conn->prepare("
+        INSERT INTO items 
+        (product_id, serial, batch, current_warehouse_id, condition_label, status, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,NOW())
+    ");
+
+    // prepare insert for tracking
+    $track = $conn->prepare("
+        INSERT INTO product_tracking 
+        (product_id, item_id, action, tracking_code, status, location, remarks, created_at, warehouse_id, user_id)
+        VALUES (?, ?, ?, ?, ?, NULL, ?, NOW(), ?, ?)
+    ");
+
+    for ($i = 0; $i < $qty; $i++) {
+        $serialToUse = $ser;
+
+        // If serial is not given, auto-generate
+        if (empty($serialToUse)) {
+            $serialToUse = "MP" . $id . "-" . str_pad((string)($currentCount + $i + 1), 3, "0", STR_PAD_LEFT);
+        } else {
+            // if base serial provided, keep as is
+            $serialToUse = $ser;
+        }
+
+        // 🔹 Insert into items
+        $ins->bind_param(
+            "ississs",
+            $id,
+            $serialToUse,
+            $batch,
+            $warehouse_id,
+            $condition,
+            $status,
+            $notes
+        );
+        $ins->execute();
+
+        $itemId = $conn->insert_id; // get new item id
+
+        // 🔹 Insert tracking record
+        $action = "ADD";
+        $track->bind_param(
+            "iissssii",
+            $id,
+            $itemId,
+            $action,
+            $serialToUse,  // use the serial as tracking_code
+            $status,
+            $notes,
+            $warehouse_id,
+            $userId
+        );
+        $track->execute();
+    }
+
+    $ins->close();
+    $track->close();
+
+    $this->logEvent((int)$id, 'RECEIVED', "Items added", (int)$qty, null, null);
+
+    return $this->respondCreated(['added' => $qty]);
+}
+
+
+/** POST /products/{id}/items/add  — qty, serial (opt), batch, warehouse_id, condition_label */
+public function addItem2($id = null)
+{
+    global $conn;
+    $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+    // validate qty
+    $qty = isset($p['qty']) && (int)$p['qty'] > 0 ? (int)$p['qty'] : 1;
+
+    $ser          = trim((string)($p['serial'] ?? '')); // base serial (optional)
+    $batch        = (string)($p['batch'] ?? '');
+    $warehouse_id = (int)($p['warehouse_id'] ?? 0);
+    $condition    = (string)($p['condition'] ?? '');
+    $status       =  'CREATED'; // (string)($p['status'] ?? '');
+    $acquired_at  = (string)($p['acquired_at'] ?? null);
+    $notes        = (string)($p['notes'] ?? '');
+    $id           = (int)($id ?? 0); // product_id must be passed
+
+    if (!$id) {
+        return $this->failValidationErrors('Missing product_id');
+    }
+
+    // find current count of items for serial auto-generation
+    $res = $conn->prepare("SELECT COUNT(*) as cnt FROM items WHERE product_id=?");
+    $res->bind_param("i", $id);
+    $res->execute();
+    $row = $res->get_result()->fetch_assoc();
+    $res->close();
+
+    $currentCount = (int)($row['cnt'] ?? 0);
+
+    $ins = $conn->prepare("
+        INSERT INTO items 
+        (product_id, serial, batch, current_warehouse_id, condition_label, status, acquired_at, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,NOW())
+    ");
+
+    for ($i = 0; $i < $qty; $i++) {
+        $serialToUse = $ser;
+
+        // If serial is not given, auto-generate
+        if (empty($serialToUse)) {
+            $serialToUse = "MP" . $id . "-" . str_pad((string)($currentCount + $i + 1), 3, "0", STR_PAD_LEFT);
+        } else {
+            // If base serial provided, append padded sequence
+            $serialToUse = $ser; // . str_pad((string)($i + 1), 3, "0", STR_PAD_LEFT);
+        }
+
+        $ins->bind_param(
+            "ississss",
+            $id,
+            $serialToUse,
+            $batch,
+            $warehouse_id,
+            $condition,
+            $status,
+            $acquired_at,
+            $notes
+        );
+        $ins->execute();
+    }
+
+    $ins->close();
+
+    $this->logEvent((int)$id, 'RECEIVED', "Items added", (int)$qty, null, null);
+
+    return $this->respondCreated(['added' => $qty]);
+}
+
+
+    /** POST /products/{id}/items/add-batch */
+    public function addBatch($id = null)
+    {
+        global $conn;
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+        if (!$id || empty($p['qty']) || empty($p['warehouse_id'])) {
+            return $this->failValidationErrors('qty and warehouse required');
+        }
+
+        $qty   = max(1, (int)$p['qty']);
+        $batch = (string)($p['batch_number'] ?? 'BATCH-' . time());
+        $cond  = (string)($p['condition'] ?? 'new');
+        $stat  = (string)($p['status'] ?? 'available');
+        $wid   = (int)$p['warehouse_id'];
+
+        $sql = "INSERT INTO items (product_id, serial, current_warehouse_id, condition_label, status, acquired_at)
+                VALUES (?, ?, ?, ?, ?, NOW())";
+        $stmt = $conn->prepare($sql);
+
+        for ($i = 1; $i <= $qty; $i++) {
+            $serial = $batch . "-" . $i;
+            $stmt->bind_param("isiss", $id, $serial, $wid, $cond, $stat);
+            $stmt->execute();
+        }
+        $stmt->close();
+
+        return $this->respondCreated(['added' => $qty]);
+    }
 
 }

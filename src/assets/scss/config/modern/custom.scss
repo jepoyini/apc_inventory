@@ -380,3 +380,32 @@ body {
   align-items: center;
   justify-content: center;
 }
+
+.created-status {
+   background-color: gray !important;
+   color: white !important;
+}
+
+.returned-status {
+   background-color: #fd7e14 !important;
+   color: white !important;
+  
+}
+
+.checkin-status {
+  background-color: #1eedb0 !important;
+  color: black !important;
+}
+
+.mw-70 {
+ min-width: 70px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}

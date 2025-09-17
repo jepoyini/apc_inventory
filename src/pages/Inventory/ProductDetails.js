@@ -32,7 +32,10 @@ const ProductDetails = () => {
   const [producttracking, setProductTracking] = useState(null);
   const [productspecs, setProductSpecs] = useState(null);
   const [productId, setProductId] = useState(null);
+  const [productname, setProductName] = useState(null);
   const [activeTab, setActiveTab] = useState("1");
+  const [items, setItems] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
 
   const [qrOpen, setQrOpen] = useState(false);
   const [qrProduct, setQrProduct] = useState(null);
@@ -45,13 +48,25 @@ const ProductDetails = () => {
 const loadProduct = async () => {
   setLoading(true);
   try {
-    debugger; 
     const res = await apipost.post(`/products/${id}/details`, {});
+    debugger;
     setProduct(res?.product || null);
+    setProductName(res?.product?.name || null);
     setProductImages(res?.images || null);
     setProductId(res?.product?.id || null);
     setProductTracking(res?.tracking || null);
     setProductSpecs(res?.productspecs || null);
+
+    // ✅ load items tied to this product
+    if (res?.items) {
+      setItems(res.items);
+    }
+
+    // ✅ load warehouses for dropdown
+    const w = await apipost.post(`/warehouses/list`, {});
+    setWarehouses(w?.warehouses || []);
+    
+    
   } catch (e) {
     console.error(e);
   } finally {
@@ -60,10 +75,23 @@ const loadProduct = async () => {
 };
 
 useEffect(() => {
-    debugger; 
   loadProduct();
 }, [activeTab]);
 
+// update items callback
+const handleItemsChange = async (newItems) => {
+  try {
+    setItems(newItems); // update UI immediately
+    await apipost.post(`/items/sync`, {
+      product_id: productId,
+      items: newItems,
+    });
+    toast.success("Items updated");
+  } catch (e) {
+    console.error(e);
+    toast.error("Failed to save items");
+  }
+};
 
 
   const handleDelete = () => {
@@ -72,6 +100,7 @@ useEffect(() => {
   };
 
   const handleEdit = () => {
+    debugger; 
      navigate(`/products/${product.id}/edit`);
   };
 
@@ -99,25 +128,92 @@ useEffect(() => {
     cost: "",
     default_warehouse_id: "",
     reorder_point: "",
+    max_stock: "",
     brand: "",
     model: "",
     description: "",
-    tags: []
+    tags: [],
+    length: "",
+    width: "",
+    height: "",
+    weight: "",
+    material: "",
+    base: "",
+    engraving: "",
+    packaging: "",
+    supplier: "",
+    manufactured: "",
+    warranty: "",
   });
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
-  const openAdd = () => { setIsEditing(false); setEditingId(null); setCreateForm({
-    sku: "", name: "", category: "", status: "active", price: "", cost: "",
-    default_warehouse_id: "", reorder_point: "", brand: "", model: "", description: "", tags: []
-  }); setCreateOpen(true); };
+  const openAdd = () => {
+    setIsEditing(false);
+    setEditingId(null);
+    setCreateForm({
+      sku: "",
+      name: "",
+      category: "",
+      status: "active",
+      price: "",
+      cost: "",
+      default_warehouse_id: "",
+      reorder_point: "",
+      max_stock: "",
+      brand: "",
+      model: "",
+      description: "",
+      tags: [],
+      length: "",
+      width: "",
+      height: "",
+      weight: "",
+      material: "",
+      base: "",
+      engraving: "",
+      packaging: "",
+      supplier: "",
+      manufactured: "",
+      warranty: "",
+    });
+    setCreateOpen(true);
+  };
+
   const closeAdd = () => setCreateOpen(false);
 
-  const openEdit = (row) => { setIsEditing(true); setEditingId(row.id); setCreateForm({
-    sku: row.sku || "", name: row.name || "", category: row.category || "", status: row.status || "active",
-    price: row.price ?? "", cost: row.cost ?? "", default_warehouse_id: row.default_warehouse_id ?? "",
-    reorder_point: row.reorder_point ?? "", brand: row.brand || "", model: row.model || "", description: row.description || "", tags: row.tags || []
-  }); setCreateOpen(true); };
+  const openEdit = (row) => {
+    setIsEditing(true);
+    setEditingId(row.id);
+    setCreateForm({
+      sku: row.sku || "",
+      name: row.name || "",
+      category: row.category || "",
+      status: row.status || "active",
+      price: row.price ?? "",
+      cost: row.cost ?? "",
+      default_warehouse_id: row.default_warehouse_id ?? "",
+      reorder_point: row.reorder_point ?? "",
+      max_stock: row.max_stock ?? "",
+      brand: row.brand || "",
+      model: row.model || "",
+      description: row.description || "",
+      tags: row.tags || [],
+      length: row.length || "",
+      width: row.width || "",
+      height: row.height || "",
+      weight: row.weight || "",
+      material: row.material || "",
+      base: row.base || "",
+      engraving: row.engraving || "",
+      packaging: row.packaging || "",
+      supplier: row.supplier || "",
+      manufactured: row.manufactured || "",
+      warranty: row.warranty || "",
+    });
+    setCreateOpen(true);
+  };
+
 
 
   const submitAdd = async () => {
@@ -128,7 +224,9 @@ useEffect(() => {
         cost: Number(createForm.cost || 0),
         default_warehouse_id: createForm.default_warehouse_id ? Number(createForm.default_warehouse_id) : null,
         reorder_point: Number(createForm.reorder_point || 0),
+        max_stock: Number(createForm.max_stock || 0)
       };
+      debugger; 
       if (isEditing && editingId) {
         await apipost.post(`/products/${editingId}/update`, payload);
         toast.success("Product updated");
@@ -136,7 +234,16 @@ useEffect(() => {
         await apipost.post(`/products/create`, payload);
         toast.success("Product created");
       }
-      setIsEditing(false); setEditingId(null); closeAdd(); load(currentPage);
+      setIsEditing(false); 
+      setEditingId(null); 
+      closeAdd(); 
+      //load(currentPage);
+      
+    // ✅ delay reload by 2 seconds
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+
     } catch (e) {
       console.error(e);
       toast.error(isEditing ? "Update failed" : "Create failed");
@@ -189,28 +296,39 @@ useEffect(() => {
   return (
     <div className="page-content">
       <Container fluid>
-<Row className="align-items-center mb-3">
-  <Col className="d-flex flex-column">
-    <a
-      href="#!"
-      onClick={(e) => {
-        e.preventDefault();
-        navigate("/inventory");
-      }}
-      className="d-inline-flex align-items-center mb-2 fw-semibold text-primary"
-      style={{ fontSize: "0.9rem", textDecoration: "none" }}
-    >
-      <i
-        className="ri-arrow-left-line me-2"
-        style={{ fontSize: "1.1rem", color: "#0d6efd" }}
-      ></i>
-      <span style={{ color: "#0d6efd" }}>Back to Products</span>
-    </a>
 
-    <h2 className="mb-0">{product.name}</h2>
-    <div className="text-muted">SKU: {product.sku}</div>
-  </Col>
-</Row>
+
+
+      <Row className="align-items-center mb-3">
+        <Col>
+          <div className="d-flex justify-content-between align-items-center w-100">
+            {/* Left side: Title + SKU */}
+            <div>
+              <h2 className="mb-0">{product.name}</h2>
+              <div className="text-muted">SKU: {product.sku}</div>
+            </div>
+
+            {/* Right side: Actions */}
+            <div className="d-flex gap-2">
+              <Button
+                color="light"
+                size="sm"
+                onClick={() => navigate("/inventory")}
+                className="d-flex align-items-center shadow-sm"
+              >
+                <i className="ri-arrow-left-line me-1"></i>
+                Back to List
+              </Button>
+              <Button color="warning" size="sm" onClick={() => openEdit(product)}>
+                <i className="ri-pencil-line me-1" /> Edit
+              </Button>
+              <Button color="danger" size="sm" onClick={handleDelete}>
+                <i className="ri-delete-bin-line me-1" /> Delete
+              </Button>
+            </div>
+          </div>
+        </Col>
+      </Row>
 
 
 
@@ -235,28 +353,20 @@ useEffect(() => {
                   Images
                 </NavLink>
               </NavItem>
-              {/* <NavItem>
+              <NavItem>
                 <NavLink
                   className={classnames({ active: activeTab === "3" })}
                   onClick={() => toggleTab("3")}
                 >
-                  Quantity
+                  Items
                 </NavLink>
-              </NavItem> */}
+              </NavItem>
               <NavItem>
                 <NavLink
                   className={classnames({ active: activeTab === "4" })}
                   onClick={() => toggleTab("4")}
                 >
                   Tracking
-                </NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink
-                  className={classnames({ active: activeTab === "5" })}
-                  onClick={() => toggleTab("5")}
-                >
-                  Specs
                 </NavLink>
               </NavItem>
             </Nav>
@@ -269,14 +379,27 @@ useEffect(() => {
                     onDelete={() => handleDelete()}
                     onEdit={() => handleEdit()}
                     reloadProduct={loadProduct}
+                    specs={productspecs || {}}
                     active={activeTab === "1"}   
                 />
               </TabPane>
               <TabPane tabId="2">
                 <ImageGallery productId={productId} />
               </TabPane>
+              <TabPane tabId="3">
+                <TabPane tabId="3">
+                  <QuantityManager
+                    productId={productId}
+                    productname = {productname}
+                    items={items}
+                    onItemsChange={handleItemsChange}
+                    warehouses={warehouses}
+                    readonly={false}
+                  />
+                </TabPane>
+              </TabPane>              
               <TabPane tabId="4">
-                 <TrackingHistory events={producttracking || []} />
+                 <TrackingHistory events={producttracking || []} load={loadProduct}   />
               </TabPane>
               <TabPane tabId="5">
                 <ProductSpecs specs={productspecs || {}} />
@@ -306,6 +429,7 @@ useEffect(() => {
             onDeleteClick={onDeleteProduct}
             onCloseClick={() => setDeleteModal(false)}
         />
+        <ToastContainer limit={5} />
       </Container>
     </div>
   );

@@ -218,7 +218,7 @@ const Products = () => {
 
   return (
     <div className="page-content">
-      <ToastContainer limit={1} />
+      <ToastContainer limit={5} />
       <Container fluid>
         {/* Header */}
         <Row className="mb-2">
@@ -412,13 +412,13 @@ const Products = () => {
 
                 <div className="text-end mt-2 d-flex justify-content-end align-items-center gap-2">
                   <Button
-                    className="btn btn-secondary waves-effect waves-light"
+                    className="btn btn-light waves-effect waves-light"
                     onClick={clearFilters}
                   >
                     <i className="ri-filter-off-line me-1" /> Clear Filters
                   </Button>
                   <Button
-                    className="btn btn-info waves-effect waves-light"
+                    className="btn btn-light waves-effect waves-light"
                     onClick={toggleView}
                   >
                     <i
@@ -435,6 +435,7 @@ const Products = () => {
         </Card>
 
 
+
         {/* Table or Grid */}
         {view === "list" ? (
           <Card><CardBody>
@@ -449,6 +450,16 @@ const Products = () => {
           </CardBody></Card>
         ) : (
           <>
+
+          {/* Row Count */}
+            <Row className="mb-2">
+              <Col>
+                <small className="text-muted">
+                  Showing <strong>{totalRecords}</strong> {totalRecords === 1 ? "record" : "records"}
+                </small>
+              </Col>
+            </Row>    
+
             {/* Grid View */}
             <Row className="g-3">{rows.map((p) => (
               <Col key={p.id} xl={3}><ProductCard product={p} onView={() => handleViewDetails(p.id)} onEdit={() => openEdit(p)} onDelete={() => onDeleteProduct(p.id)} /></Col>
@@ -456,8 +467,8 @@ const Products = () => {
 
             {/* Grid Pagination */}
             <Row className="align-items-center mt-3 g-3">
-              <div className="col-sm d-flex gap-3">
-                <Input type="select" value={pageSize} onChange={(e) => { setPageSize(+e.target.value); setCurrentPage(1); load(1); }}>
+              <div className="col-sm d-flex gap-3 align-items-center">
+                <Input className="w-auto" type="select" value={pageSize} onChange={(e) => { setPageSize(+e.target.value); setCurrentPage(1); load(1); }}>
                   <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option>
                 </Input>
                 <div className="text-muted">Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalRecords)} of {totalRecords}</div>

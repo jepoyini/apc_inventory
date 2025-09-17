@@ -2,13 +2,12 @@
 // FILE: src/pages/Inventory/ProductCard.jsx
 // ================================================================
 import React, { useState } from "react";
-import { Card, CardBody, Badge, Button } from "reactstrap";
+import { Card, CardBody, Badge } from "reactstrap";
 import { api } from "../../config"; 
 import DeleteModal from "../../Components/Common/DeleteModal";
 import QRCodeGenerator from "./QRCodeGenerator"; // adjust path if needed
 
-const ProductCard = ({ product, onView, onDelete, onEdit }) => {
-
+const ProductCard = ({ product, onView }) => {
   const [qrOpen, setQrOpen] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
 
@@ -20,35 +19,41 @@ const ProductCard = ({ product, onView, onDelete, onEdit }) => {
     return base + "/" + url.replace(/^\//, "");
   };
 
-  const handleDelete = () => {
-    setDeleteModal(false);
-    onDelete(product.id);
-  };
-
   return (
     <>
       <DeleteModal
         show={deleteModal}
-        onDeleteClick={handleDelete}
+        onDeleteClick={() => {
+          setDeleteModal(false);
+          // hook kept in case you want delete later
+        }}
         onCloseClick={() => setDeleteModal(false)}
       />
 
-      <Card className="h-100 shadow-sm">
+      <Card
+        className="h-100 shadow-sm clickable-card"
+        onClick={() => onView(product)}
+        style={{ cursor: "pointer" }}
+      >
         <CardBody className="d-flex flex-column">
           {/* Header */}
-          <div className="d-flex justify-content-between align-items-start mb-2">
-            <div>
-              <h5 className="mb-1">{product.name}</h5>
-              <Badge color="info" pill className="me-2">{product.category}</Badge>
-              <Badge color={product.status === "active" ? "success" : "secondary"} pill>
-                {product.status}
-              </Badge>
-            </div>
-         
+          <div className="mb-2">
+            <h5 className="mb-1">{product.name}</h5>
+            <div className="text-muted small">ID: {product.id}</div>
+            <Badge color="info" pill className="me-2">{product.category}</Badge>
+            <Badge
+              color={product.status === "active" ? "success" : "secondary"}
+              pill
+            >
+              {product.status}
+            </Badge>
           </div>
 
           {/* Product Image */}
-          <div className="ratio ratio-16x9 bg-light mb-3" style={{ overflow: "hidden" }}>
+          <div
+            className="ratio ratio-16x9 bg-light mb-3"
+            style={{ overflow: "hidden" }}
+          >
             <img
               src={prefixUrl(product.primary_image || "images/noimage.png")}
               alt={product.name}
@@ -56,42 +61,33 @@ const ProductCard = ({ product, onView, onDelete, onEdit }) => {
             />
           </div>
 
-
-
-            {/* Info */}
-            <div className="mb-3">
+          {/* Info */}
+          <div className="mb-3">
             <div className="d-flex justify-content-between">
-                <strong>SKU:</strong>
-                <span className="font-monospace">{product.sku}</span>
+              <strong>Serial/SKU:</strong>
+              <span className="font-monospace">{product.sku}</span>
             </div>
             <div className="d-flex justify-content-between">
-                <strong>Price:</strong>
-                <span className="text-success fw-semibold">
-                ${Number(product.price).toFixed(2)}
-                </span>
+              <strong>Price:</strong>
+              <span className="text-success fw-semibold">
+                ₱{Number(product.price).toFixed(2)}
+              </span>
             </div>
             <div className="d-flex justify-content-between">
-                <strong>Stock:</strong>
-                <span className="text-success fw-semibold">
+              <strong>Stock:</strong>
+              <span className="text-success fw-semibold">
                 {product.available_qty}/{product.total_qty || product.capacity || 0}
-                </span>
+              </span>
             </div>
-            <div className="d-flex justify-content-between">
-                <strong>Location:</strong>
-                <span>
-                <i className="ri-map-pin-line me-1 text-muted"></i>
-                {product.warehouse_name || "N/A"}
-                </span>
-            </div>
-            </div>
-
-
+          </div>
 
           {/* Tags */}
           {product.tags && product.tags.length > 0 && (
-            <div className="mb-3 d-flex flex-wrap gap-1">
+            <div className="mt-auto d-flex flex-wrap gap-1">
               {product.tags.slice(0, 3).map((t, i) => (
-                <Badge key={i} color="primary" className="text-dark">{t}</Badge>
+                <Badge key={i} color="primary" className="text-dark">
+                  {t}
+                </Badge>
               ))}
               {product.tags.length > 3 && (
                 <Badge color="primary" className="text-muted">
@@ -100,43 +96,10 @@ const ProductCard = ({ product, onView, onDelete, onEdit }) => {
               )}
             </div>
           )}
-
-
-        {/* Spacer to push actions down */}
-        <div className="flex-grow-1"></div>
-
-        {/* Actions */}
-        <div className="d-flex justify-content-between mt-2">
-            <Button color="light" size="sm" onClick={() => setQrOpen(true)}>
-              <i className="ri-qr-code-line me-1" /> Generate QR
-            </Button>
-
-           <div className="d-flex gap-1">
-              <Button color="light" size="sm" onClick={onView} title="View">
-                <i className="ri-eye-line" />
-              </Button>
-              <Button 
-                color="light" 
-                size="sm" 
-                onClick={() => onEdit(product)} 
-                title="Edit"
-              >
-                <i className="ri-edit-2-line text-primary" />
-              </Button>
-              <Button 
-                color="light" 
-                size="sm" 
-                onClick={() => setDeleteModal(true)} 
-                title="Delete"
-              >
-                <i className="ri-delete-bin-6-line text-danger" />
-              </Button>
-            </div>
-
-          </div>
         </CardBody>
       </Card>
-      
+
+      {/* QR modal kept for future, but hidden since no button */}
       <QRCodeGenerator
         product={product}
         open={qrOpen}
@@ -147,4 +110,3 @@ const ProductCard = ({ product, onView, onDelete, onEdit }) => {
 };
 
 export default ProductCard;
-

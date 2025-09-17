@@ -951,15 +951,21 @@ function Deposit_Complete($user_id, $amount, $id = 0, $hash = '', $walletaddress
 		return $csrf_token; 
 	}
 	
-	function add_activity_log($user_id,$type,$data='')
-	{
-		global $conn;
-		$ip = getUserIP(); 
-	  	$ip_location = getIPLocation($ip); 
-		$sql = "INSERT INTO activity_log (`user_id`, `type` ,`date_created`,`data`,`ip_address`,`ip_location`) VALUES ($user_id,'$type',NOW(),'$data','$ip','$ip_location')";
-		$stmt = $conn->prepare($sql);
-		$stmt->execute();			
-	}	
+    function add_activity_log($user_id, $type, $data = '')
+    {
+        global $conn;
+
+        $ip = getUserIP();
+        $ip_location = getIPLocation($ip);
+
+        $sql = "INSERT INTO activity_log 
+                (`user_id`, `type`, `date_created`, `data`, `ip_address`, `ip_location`) 
+                VALUES (?, ?, NOW(), ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->execute([$user_id, $type, $data, $ip, $ip_location]);
+    }
+    	
+
 	function getUserIP() {
 	    // Check if the user is using a shared internet (e.g., proxies)
 	    if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
@@ -1012,11 +1018,11 @@ function Deposit_Complete($user_id, $amount, $id = 0, $hash = '', $walletaddress
 
 	function getIPLocation($ip)
 	{
-        return ""; 
         
         $url = "https://ipwhois.app/json/$ip";
         $response = file_get_contents($url);
         $data =  json_decode($response, true);
+
         if (!empty($data['country']))
         {
             $location = $data['country'];

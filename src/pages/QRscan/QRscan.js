@@ -13,16 +13,17 @@ import {
   RiCheckLine, RiCloseLine
 } from "react-icons/ri";
 import { APIClient } from "../../helpers/api_helper";
-import { toast } from "react-toastify";
 import { api } from "../../config";
 import { useNavigate } from "react-router-dom";
 import QrReader from "react-qr-scanner";
 import Swal from "sweetalert2";
+import Toastify from "toastify-js";
+import "toastify-js/src/toastify.css";
 
 const QRScanner = () => {
   const navigate = useNavigate();
   const apipost = new APIClient();
-  const [activeTab, setActiveTab] = useState("camera");
+  const [activeTab, setActiveTab] = useState("manual");
   const [scanHistory, setScanHistory] = useState([]);
   const [batchScans, setBatchScans] = useState([]);
   const [selectedAction, setSelectedAction] = useState("none");
@@ -33,7 +34,45 @@ const QRScanner = () => {
   const [selectedWarehouse, setSelectedWarehouse] = useState("");
   const [warehouses, setWarehouses] = useState([]);
   const [cameraActive, setCameraActive] = useState(false);
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);  
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  function showToast(message, error) {
+    let backgroundColor = "#405189"; // default
+
+    if (error) {
+      backgroundColor = "#f06548";   // 🔴 Bootstrap danger
+    } else {
+      backgroundColor = "#0ab39c";   // 🟢 Bootstrap success
+    }
+
+    Toastify({
+      text: message,
+      gravity: "bottom",
+      position: "right",
+      duration: 2000,
+      close: true,
+      backgroundColor: backgroundColor,
+    }).showToast();
+  }
+  
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // If action is "none", ignore
+      if (selectedAction === "none") return;
+
+      // Detect scanner input start (any printable char)
+      if (e.key.length === 1 || e.key === "Enter") {
+        if (activeTab === "manual" && manualInputRef.current) {
+          manualInputRef.current.focus();
+        } else if (activeTab === "batch" && batchInputRef.current) {
+          batchInputRef.current.focus();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [activeTab, selectedAction]);
 
   const toggleTab = (tab) => {
     if (activeTab !== tab) setActiveTab(tab);
@@ -47,60 +86,70 @@ const QRScanner = () => {
   };
 
   const sendToServer = async (code) => {
-    debugger; 
+  
     setLoading(true);
     try {
-        const payload = {
-          code,
-          action: selectedAction !== "none" ? selectedAction : null,
-          warehouse_id: selectedWarehouse ,
-          uid: obj.id,
-        };
+      const payload = {
+        code,
+        action: selectedAction !== "none" ? selectedAction : null,
+        warehouse_id: selectedWarehouse,
+        uid: obj.id,
+      };
 
       const res = await apipost.post(`/products/scan`, payload);
-
-      const entry = {
-        code,
-        timestamp: new Date().toLocaleString(),
-        success: res?.status === "success",
-        action: payload.action,
-        product_id: res.product.id,
-        name: res.product.name,
-        image: res.product.primary_image,
-        warehouse_name: res.warehouse_name,
-      };
-      setScanHistory((prev) => [entry, ...prev].slice(0, 100));
-
-
-      if (entry.success) {
-        toast.success(`Scan saved: ${entry.name || code}`);
+      if (res.status == 'error') {
+          showToast(`${res.message}`, 'error');
       } else {
-        toast.error(`Failed to save: ${code}`);
+          const entry = {
+            code,
+            timestamp: new Date().toLocaleString(),
+            success: res?.status === "success",
+            action: payload.action,
+            product_id: res.product?.id,
+            name: res.product?.name,
+            image: res.product?.primary_image,
+            warehouse_name: res.warehouse_name,
+          };
+          setScanHistory((prev) => [entry, ...prev].slice(0, 100));
+
+          if (entry.success) {
+            showToast(`Scan saved: ${entry.name || code}`);
+          } else {
+            showToast(`Failed to save: ${code}`,1);
+          }
       }
     } catch (e) {
       console.error(e);
-      toast.error("Error connecting to server");
+       showToast("Error connecting to server",1);
     } finally {
       setLoading(false);
     }
   };
-
-
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case "CREATED":   return <Badge className="created-status mw-70">CREATED</Badge>;
+      case "AVAILABLE": return <Badge color="success" className="mw-70">AVAILABLE</Badge>;
+      case "IN_TRANSIT":return <Badge color="info" className="mw-70">IN-TRANSIT</Badge>;
+      case "IN_STOCK":  return <Badge color="primary" className="mw-70">IN-STOCK</Badge>;
+      case "SOLD":      return <Badge color="dark" className="mw-70">SOLD</Badge>;
+      case "DISPOSED":  return <Badge color="danger" className="mw-70">DISPOSED</Badge>;
+      case "RETURNED":  return <Badge className="returned-status mw-70">RETURNED</Badge>;
+      case "CHECK_IN":  return <Badge className="returned-status mw-70">CHECK-IN</Badge>;
+      default:          return <Badge color="secondary" className="mw-70">{status}</Badge>;
+    }
+  };
   useEffect(() => {
     const fetchWarehouses = async () => {
-
       try {
-        const res = await apipost.post("/warehouses", {}); // <-- make sure you have this API
+        const res = await apipost.post("/warehouses", {});
         setWarehouses(res.warehouses || []);
       } catch (e) {
         console.error("Failed to fetch warehouses", e);
       }
     };
+    fetchWarehouses();
+  }, []);
 
-  fetchWarehouses();
-}, []);
-
-  // ✅ Focus input for manual scans
   useEffect(() => {
     if (manualInputRef.current && activeTab === "manual") {
       manualInputRef.current.focus();
@@ -110,7 +159,6 @@ const QRScanner = () => {
   const handleManualKey = (code) => {
     if (!code) return;
     sendToServer(code);
-
   };
 
   const handleBatchAdd = (code) => {
@@ -128,32 +176,13 @@ const QRScanner = () => {
   const handleCameraScan = (result) => {
     if (result && result.text) {
       sendToServer(result.text);
-      return;
-      
-      if (isMobile) {
-        // On phone → preview first
-        Swal.fire({
-          title: "Scanned Code",
-          text: `SKU / Code: ${result.text}`,
-          icon: "info",
-          showCancelButton: true,
-          confirmButtonText: "Submit to Server",
-          cancelButtonText: "Cancel"
-        }).then((res) => {
-          if (res.isConfirmed) sendToServer(result.text);
-        });
-      } else {
-        // On desktop → send immediately
-        sendToServer(result.text);
-      }
     }
   };
 
   const handleCameraError = (err) => {
     console.error("Camera error", err);
-    toast.error("Camera access error");
+    showToast("Error connecting to server",1); 
   };
-
 
   return (
     <div className="page-content">
@@ -161,8 +190,6 @@ const QRScanner = () => {
         <Row>
           <Col>
             <Card>
-
-              {/* Header: only title */}
               <CardHeader>
                 <h5 className="mb-0 d-flex align-items-center">
                   <RiQrCodeLine className="me-2" /> QR Scanner
@@ -170,7 +197,6 @@ const QRScanner = () => {
               </CardHeader>
 
               <CardBody>
-
                 {loading && (
                   <div
                     className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
@@ -183,9 +209,10 @@ const QRScanner = () => {
                   </div>
                 )}
 
-                {/* Actions Row */}
+                {/* Actions + Legend Row */}
                 <Row className="mb-4">
-                  <Col xs={12} md={4}>
+                  {/* 🔹 Actions */}
+                  <Col xs={12} md={6}>
                     <div className="d-flex flex-wrap align-items-center gap-2">
                       <Label className="mb-0 fw-semibold">Action:</Label>
 
@@ -195,12 +222,23 @@ const QRScanner = () => {
                         onChange={(e) => setSelectedAction(e.target.value)}
                       >
                         <option value="none">None</option>
-                        <option value="receive">Mark as Received</option>
-                        <option value="ship">Mark as Shipped</option>
-                        <option value="move">Move to Location</option>
+                        {/* <option value="CREATED">CREATED</option> */}
+                        <option value="AVAILABLE">AVAILABLE</option>
+                        <option value="IN_TRANSIT">IN-TRANSIT</option>
+                        <option value="CHECK_IN">CHECK-IN</option>
+                        <option value="IN_STOCK">IN-STOCK</option>
+                        <option value="SOLD">SOLD</option>
+                        <option value="RETURNED">RETURNED</option>
+                        <option value="DISPOSED">DISPOSED</option>
                       </Input>
 
-                      {(selectedAction === "receive" || selectedAction === "move") && (
+                      {/* ✅ Keep Warehouse dropdown */}
+                      {(selectedAction === "RECEIVE" ||
+                        selectedAction === "MOVE" ||
+                        selectedAction === "RETURNED" ||
+                        selectedAction === "CHECK_IN" ||
+                        selectedAction === "IN_TRANSIT" ||
+                        selectedAction === "IN_STOCK") && (
                         <Input
                           type="select"
                           value={selectedWarehouse}
@@ -216,6 +254,7 @@ const QRScanner = () => {
                       )}
 
                       <Button
+                        disabled={selectedAction === "none"}
                         color="success"
                         onClick={() => {
                           if (activeTab === "manual") {
@@ -232,10 +271,43 @@ const QRScanner = () => {
                       </Button>
                     </div>
                   </Col>
+
+                  {/* 🔹 Legend */}
+                  <Col xs={12} md={6}>
+                    <Card>
+                      <CardHeader>
+                        <h6 className="mb-0 fw-bold">Statuses Legend</h6>
+                      </CardHeader>
+                      <CardBody>
+                        <ul className="list-unstyled mb-0 small">
+                          <li><Badge className="created-status mw-70 me-2">CREATED</Badge> Product created/defined</li>
+                          <li><Badge color="success" className="mw-70 me-2">AVAILABLE</Badge> Items entered, ready at origin</li>
+                          <li><Badge color="info" className="mw-70 me-2">IN-TRANSIT</Badge> On the way to warehouse</li>
+                          <li><Badge className="mw-70 checkin-status me-2">CHECK-IN</Badge> Under verification/audit</li>
+                          <li><Badge color="primary" className="mw-70 me-2">IN-STOCK</Badge> Officially received at warehouse</li>
+                          <li><Badge color="dark" className="mw-70 me-2">SOLD</Badge> Sold/fulfilled order</li>
+                          <li><Badge className="returned-status mw-70 me-2">RETURNED</Badge> Customer returned</li>
+                          <li><Badge color="danger" className="mw-70 me-2">DISPOSED</Badge> Scrapped/destroyed</li>
+                        </ul>
+                      </CardBody>
+                    </Card>
+                  </Col>
                 </Row>
+
+
 
                 {/* Tabs */}
                 <Nav tabs>
+                  <NavItem>
+                    <NavLink
+                      className={classnames({ active: activeTab === "manual" })}
+                      onClick={() => toggleTab("manual")}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <RiQrCodeLine className="me-1" /> Keyboard / Scanner
+                    </NavLink>
+                  </NavItem>
+
                   <NavItem>
                     <NavLink
                       className={classnames({ active: activeTab === "camera" })}
@@ -245,16 +317,7 @@ const QRScanner = () => {
                       <RiCameraLine className="me-1" /> Camera
                     </NavLink>
                   </NavItem>
-                  <NavItem>
-                    <NavLink
-                      className={classnames({ active: activeTab === "manual" })}
-                      onClick={() => toggleTab("manual")}
-                      style={{ cursor: "pointer" }}
-                    >
-                     <RiQrCodeLine className="me-1" />  
-                      Keyboard / Scanner
-                    </NavLink>
-                  </NavItem>                  
+
                   <NavItem>
                     <NavLink
                       className={classnames({ active: activeTab === "batch" })}
@@ -264,52 +327,41 @@ const QRScanner = () => {
                       <RiUpload2Line className="me-1" /> Batch
                     </NavLink>
                   </NavItem>
-
                 </Nav>
 
                 <TabContent activeTab={activeTab} className="pt-3">
-
-                    {/* Camera Tab */}
-                    <TabPane tabId="camera">
-                      <div className="text-center">
-                        <Card className="p-3">
-                          <CardBody>
-                            <h6>Live Camera Scan</h6>
-                            <p className="text-muted small">
-                              Position your QR code in front of the camera.
-                            </p>
-
-                            {/* Toggle button */}
-                            <Button
-                              color={cameraActive ? "danger" : "success"}
-                              className="mb-3"
-                              onClick={() => setCameraActive(!cameraActive)}
-                            >
-                              {cameraActive ? "Stop Camera" : "Start Camera"}
-                            </Button>
-
-                            <div
-                              className="bg-light border rounded d-flex align-items-center justify-content-center"
-                              style={{ height: 300 }}
-                            >
-                              {cameraActive && activeTab === "camera" ? (
-                                <QrReader
-                                  delay={300}
-                                  onError={handleCameraError}
-                                  onScan={handleCameraScan}
-                                  style={{ width: "100%" }}
-                                />
-                              ) : (
-                                <RiCameraLine size={48} className="text-muted" />
-                              )}
-                            </div>
-                          </CardBody>
-                        </Card>
-                      </div>
-                    </TabPane>
-
-
-
+                  {/* Camera Tab */}
+                  <TabPane tabId="camera">
+                    <div className="text-center">
+                      <Card className="p-3">
+                        <CardBody>
+                          <h6>Live Camera Scan</h6>
+                          <Button
+                            color={cameraActive ? "danger" : "success"}
+                            className="mb-3"
+                            onClick={() => setCameraActive(!cameraActive)}
+                          >
+                            {cameraActive ? "Stop Camera" : "Start Camera"}
+                          </Button>
+                          <div
+                            className="bg-light border rounded d-flex align-items-center justify-content-center"
+                            style={{ height: 300 }}
+                          >
+                            {cameraActive && activeTab === "camera" ? (
+                              <QrReader
+                                delay={300}
+                                onError={handleCameraError}
+                                onScan={handleCameraScan}
+                                style={{ width: "100%" }}
+                              />
+                            ) : (
+                              <RiCameraLine size={48} className="text-muted" />
+                            )}
+                          </div>
+                        </CardBody>
+                      </Card>
+                    </div>
+                  </TabPane>
 
                   {/* Batch Tab */}
                   <TabPane tabId="batch">
@@ -317,7 +369,7 @@ const QRScanner = () => {
                       <Col md={12}>
                         <h6>Batch Scan Session</h6>
                         <Input
-                          innerRef={batchInputRef}   // ✅ new ref
+                          innerRef={batchInputRef}
                           placeholder="Scan or type a code..."
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && e.target.value.trim()) {
@@ -332,10 +384,7 @@ const QRScanner = () => {
                           ) : (
                             <ul className="list-group">
                               {batchScans.map((code, idx) => (
-                                <li
-                                  key={idx}
-                                  className="list-group-item d-flex justify-content-between align-items-center"
-                                >
+                                <li key={idx} className="list-group-item d-flex justify-content-between align-items-center">
                                   <span className="font-monospace">{code}</span>
                                   <Badge color="info">Pending</Badge>
                                 </li>
@@ -344,11 +393,7 @@ const QRScanner = () => {
                           )}
                         </div>
                         {batchScans.length > 0 && (
-                          <Button
-                            color="success"
-                            className="mt-3"
-                            onClick={handleBatchCommit}
-                          >
+                          <Button color="success" className="mt-3" onClick={handleBatchCommit}>
                             <RiCheckLine className="me-1" /> Commit Batch
                           </Button>
                         )}
@@ -356,32 +401,26 @@ const QRScanner = () => {
                     </Row>
                   </TabPane>
 
-                  {/* Manual / Keyboard Tab */}
-
+                  {/* Manual Tab */}
                   <TabPane tabId="manual">
                     <Row>
                       <Col md={3}>
                         <h6>Keyboard / Scanner Input</h6>
                         <Input
-                          innerRef={manualInputRef}   // ✅ This must exist
-                          placeholder="Scan here using barcode scanner..."
-                         onKeyDown={(e) => {
+                          innerRef={manualInputRef}
+                          disabled={selectedAction === "none"}
+                          placeholder="Scan here..."
+                          onKeyDown={(e) => {
                             if (e.key === "Enter" && e.target.value.trim()) {
                               handleManualKey(e.target.value.trim());
                               e.target.value = "";
                             }
                           }}
-
                         />
-                        <small className="text-muted">
-                          Works with physical barcode/QR scanners (auto-fills + Enter).
-                        </small>
+                        <small className="text-muted">Works with physical scanners.</small>
                       </Col>
                     </Row>
                   </TabPane>
-
-
-
                 </TabContent>
 
                 {/* History Section */}
@@ -390,30 +429,17 @@ const QRScanner = () => {
                 {scanHistory.length === 0 ? (
                   <p className="text-muted">No scans yet</p>
                 ) : (
-                  <div
-                    className="list-group"
-                    style={{ maxHeight: "300px", overflowY: "auto" }}
-                  >
+                  <div className="list-group" style={{ maxHeight: "300px", overflowY: "auto" }}>
                     {scanHistory.map((scan, idx) => (
-                      <div
-                        key={idx}
-                        className="list-group-item d-flex align-items-center"
-                      >
-                        {/* Thumbnail */}
+                      <div key={idx} className="list-group-item d-flex align-items-center">
                         {scan.image && (
                           <img
                             src={prefixUrl(scan.image)}
                             alt={scan.name || scan.code}
                             className="me-3 rounded border"
-                            style={{
-                              width: "50px",
-                              height: "40px",
-                              objectFit: "cover",
-                            }}
+                            style={{ width: "50px", height: "40px", objectFit: "cover" }}
                           />
                         )}
-
-                        {/* Details */}
                         <div className="flex-grow-1">
                           <span
                             className="fw-bold text-primary"
@@ -422,34 +448,20 @@ const QRScanner = () => {
                           >
                             {scan.name || scan.code}
                           </span>
+                           <span style={{paddingLeft:'10px'}}></span>
+                            {scan.action && (
+                            getStatusBadge(scan.action)
+                          )}
                           <div className="small text-muted">
                             {scan.code} • {scan.timestamp}
-                            {scan.action === "receive" && scan.warehouse_name && (
-                              <> • Received at {scan.warehouse_name}</>
-                            )}
-                            {scan.action === "move" && scan.warehouse_name && (
-                              <> • Moved to {scan.warehouse_name}</>
-                            )}
-                            {scan.action === "ship" && (
-                              <> • Marked as Shipped</>
-                            )}
+                            {scan.action && <> • {scan.action}</>}
+                            {scan.warehouse_name && <> • {scan.warehouse_name}</>}
                           </div>
                         </div>
-
-
-
-
-                        {/* Badges */}
                         <div>
-                          {scan.action && (
-                            <Badge color="info" pill className="me-2">
-                              {scan.action}
-                            </Badge>
-                          )}
-                          <Badge
-                            color={scan.success ? "success" : "danger"}
-                            pill
-                          >
+
+                         
+                          <Badge color={scan.success ? "success" : "danger"} pill>
                             {scan.success ? <RiCheckLine /> : <RiCloseLine />}
                           </Badge>
                         </div>
@@ -459,6 +471,8 @@ const QRScanner = () => {
                 )}
               </CardBody>
             </Card>
+
+            
           </Col>
         </Row>
       </Container>

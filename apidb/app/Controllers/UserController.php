@@ -16,6 +16,39 @@ use App\Helpers\AuthHelper;
 class UserController extends ResourceController
 {
 
+    public function activitylogs()
+    {
+        global $conn;
+        $postData = json_decode(file_get_contents("php://input"), true);
+        $id = $postData['id'] ?? null;
+
+        if (!$id) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'User ID required'
+            ]);
+        }
+
+        $stmt = $conn->prepare("
+            SELECT id, type, data, ip_address, ip_location, date_created
+            FROM activity_log
+            WHERE user_id = ?
+            ORDER BY date_created DESC
+        ");
+        $stmt->bind_param("i", $id); // i = integer
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $logs = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'logs' => $logs
+        ]);
+    }
+
+
     // GET all users + summary
     public function list()
     {
@@ -2927,161 +2960,72 @@ if ($rank === 'admin') {
 
     public function checkBalance()
     {
-
         global $conn; 
+        $uid = (int)($this->request->getVar('uid') ?? 0);
 
-        $uid = $this->request->getVar('uid');
+        // Default values
+        $total_items     = 0; 
+        $in_transit      = 0; 
+        $total_available = 0; 
+        $low_stock       = 0; 
 
-        $fullname  = ''; 
-        $todays_earnings  = 0; 
-        $total_earnings  = 1001; 
-        $onhold_earnings  = 0; 
-        $purchased_plans = 6; 
-        $coded_downlines =  0; 
-        $expense_wallet =  0; 
-        $reward_wallet =  0;         
-        $reward_cap =  0;         
-        $total_withdrawed  =  0; 
-        $total_downlines  =  10; 
-        $total_downline_members =  9; 
-        $total_personaly_sponsored =  0; 
-        $growth_percent = 0;
-        $glueapp_url = "";
-        $ewallet_balance = 0;
-        $total_deposits = 0; 
-        $expense_wallet_balance = 0; 
-        // //fullname
-        // $sql = "SELECT CONCAT(firstname,' ',lastname) as fullname, reward_cap FROM users WHERE id = '$uid'";
-        // $result = $conn->query($sql);
-        // if ($result->num_rows > 0) {
-        //     $row = $result->fetch_assoc();
-        //     $fullname = $row['fullname'];
-        //     $reward_cap = $row['reward_cap'];
-        // } else {
-        //     return $this->response->setJSON([
-        //         "status"=> "error",
-        //         "message" => "No user found!"
-        //     ]);
-        // }
+        try {
+            
+            // 🔹 Total items (exclude CREATED)
+            $sql = "SELECT COUNT(*) AS c FROM items WHERE status <> 'CREATED'";
+            $result = $conn->query($sql);
+            if ($row = $result->fetch_assoc()) {
+                $total_items = (int)$row['c'];
+            }
 
-        // // personaly_sponsored
-        // $sql = "Select count(0) as count  from users Where sponsor_id= $uid";
-        // $row = $conn->query($sql);
-        // $row = $row->fetch_assoc();
-        // $total_personaly_sponsored =$row['count'];    
+            // 🔹 In-transit items
+            $sql = "SELECT COUNT(*) AS c FROM items WHERE status='IN_TRANSIT'";
+            $result = $conn->query($sql);
+            if ($row = $result->fetch_assoc()) {
+                $in_transit = (int)$row['c'];
+            }
 
-        // //Total Earnings
-        // $sql = "Select sum(amount) as total from transactions where user_id = '$uid' and type = 'commission'";
-        // $result = $conn->query($sql);
-        // if ($result->num_rows > 0) {
-        //     $row = $result->fetch_assoc();
-        //     $total_earnings = $row['total'];
-        //     if (is_null($total_earnings))
-        //         $total_earnings = 0; 
-        // }
+            // 🔹 Available = IN_STOCK + RESERVED
+            $sql = "SELECT COUNT(*) AS c 
+                    FROM items 
+                    WHERE status IN ('IN_STOCK','RESERVED')";
+            $result = $conn->query($sql);
+            if ($row = $result->fetch_assoc()) {
+                $total_available = (int)$row['c'];
+            }
 
+            // 🔹 Low stock = products where available <= reorder_point
+            $sql = "
+                SELECT COUNT(*) AS c
+                FROM products p
+                WHERE p.reorder_point > 0
+                  AND (
+                    SELECT COUNT(*) 
+                    FROM items i 
+                    WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED')
+                  ) <= p.reorder_point
+            ";
+            $result = $conn->query($sql);
+            if ($row = $result->fetch_assoc()) {
+                $low_stock = (int)$row['c'];
+            }
 
-        // //Total Deposits
-        // $sql = "Select sum(amount) as total from ewallets where user_id = '$uid' and type = 'deposit'";
-        // $result = $conn->query($sql);
-        // if ($result->num_rows > 0) {
-        //     $row = $result->fetch_assoc();
-        //     $total_deposits = $row['total'];
-        //     if (is_null($total_deposits))
-        //         $total_deposits = 0; 
-        // }
+            return $this->response->setJSON([
+                "status"          => "success",
+                "total_items"     => $total_items,
+                "in_transit"      => $in_transit,
+                "total_available" => $total_available,
+                "low_stock"       => $low_stock,
+            ]);
 
-        // $expense_wallet_balance = GetRunningTotal($uid);
-        // $reward_wallet_balance = GetRunningRewardTotal($uid);
-        // $ewallet_balance = GetRunningTotal_Ewallet($uid);
-
-
-        // // Growth Percentage
-        // $sql = "
-        //     SELECT 
-        //         ROUND(
-        //             (total - LAG(total) OVER (ORDER BY month)) / NULLIF(LAG(total) OVER (ORDER BY month), 0) * 100,
-        //             0
-        //         ) AS growth_rate_percent
-        //     FROM (
-        //         SELECT 
-        //             DATE_FORMAT(date_created, '%Y-%m') AS month,
-        //             SUM(amount) AS total
-        //         FROM transactions
-        //         WHERE user_id = '$uid' AND type = 'commission'
-        //         GROUP BY month
-        //     ) AS monthly_totals
-        //     ORDER BY month DESC
-        //     LIMIT 1
-        // ";
-
-        // $result = $conn->query($sql);
-        // if ($result && $result->num_rows > 0) {
-        //     $row = $result->fetch_assoc();
-        //     if (!is_null($row['growth_rate_percent'])) {
-        //         $growth_percent = (int) $row['growth_rate_percent']; // 
-        //     }
-        // }
-
-        // $monthNames = [
-        //   '01' => 'Jan', '02' => 'Feb', '03' => 'Mar', '04' => 'Apr',
-        //   '05' => 'May', '06' => 'Jun', '07' => 'Jul', '08' => 'Aug',
-        //   '09' => 'Sep', '10' => 'Oct', '11' => 'Nov', '12' => 'Dec'
-        // ];
-
-        // $growth_data = [];
-
-        // $sql = "
-        //     SELECT 
-        //         DATE_FORMAT(date_created, '%Y-%m') AS month,
-        //         SUM(amount) AS total
-        //     FROM transactions
-        //     WHERE user_id = '$uid' AND type = 'commission'
-        //     GROUP BY month
-        //     ORDER BY month ASC
-        // ";
-
-        // $result = $conn->query($sql);
-        // if ($result && $result->num_rows > 0) {
-        //     while ($row = $result->fetch_assoc()) {
-        //         $monthParts = explode('-', $row['month']);
-        //         $monthName = $monthNames[$monthParts[1]] ?? $row['month'];
-        //         $growth_data[] = [
-        //             'name' => $monthName,
-        //             'earnings' => (float)$row['total']
-        //         ];
-        //     }
-        // }
-
-        // $WithdrawableBalance = GetWithdrawableBalance($uid);
-        // $pending_withdrawal = GetTotalPendingWithdrawal($uid);
-        // $total_withdrawed = GetTotalWithdrawn($uid);
-        
-        return $this->response->setJSON([
-            "status" => "success",
-            "fullname"=> $fullname,
-            "todays_earnings" =>0,
-            "total_earnings" => 0,
-            "onhold_earnings" => 0,
-            "purchased_plans" => 0,
-            "coded_downlines" => 0, 
-            "expense_wallet" =>0,
-            "reward_wallet" =>0,
-            "reward_cap" => 0,
-            "total_withdrawed" => 0,
-            "pending_withdrawal" => 0,
-            "total_downlines" => 0,
-            "total_downline_members" => 0,
-            "total_personaly_sponsored" => 0,
-            "withdrawable_balance" =>0,
-            "growth_rate" => 0,
-            "glueapp_url" => 0,
-            "chart_data" => 0,
-            "ewallet_balance"  =>  0,
-            "total_deposits"  => 0
-        ]);
-
+        } catch (\Exception $e) {
+            return $this->response->setJSON([
+                "status"  => "error",
+                "message" => $e->getMessage()
+            ]);
+        }
     }
+
 
     public function listUsers()
     {

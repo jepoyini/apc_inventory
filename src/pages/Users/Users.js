@@ -312,7 +312,7 @@ const Users = () => {
                 </Col>                
                 <Col md={2}>
                   <Button
-                    color="primary"
+                     className="btn btn-light waves-effect waves-light"
                     onClick={() => load()} // now applies current searchRef, roleRef, statusRef
                     disabled={loading}
                   >

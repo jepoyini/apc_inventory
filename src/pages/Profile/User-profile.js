@@ -1,3 +1,6 @@
+// ================================================================
+// FILE: src/pages/Users/Settings.jsx
+// ================================================================
 import React, { useState, useEffect } from "react";
 import {
   Button,
@@ -17,17 +20,28 @@ import {
   TabPane,
   Spinner,
   Badge,
+  Modal,
+  ModalHeader,
+  ModalBody,
 } from "reactstrap";
 import classnames from "classnames";
 import Swal from "sweetalert2";
 import { APIClient } from "../../helpers/api_helper";
 import { api } from "../../config";
 
+// Import ActivityLogs component
+import ActivityLogs from "..//Users/ActivityLogs";
+
 const Settings = () => {
   const apipost = new APIClient();
   const [pageloading, setPageLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("1");
+
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logsMaximized, setLogsMaximized] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   const [user, setUser] = useState({
     id: "",
@@ -71,7 +85,6 @@ const Settings = () => {
   // ================================
   const fetchUser = async () => {
     try {
-      debugger; 
       const obj = JSON.parse(sessionStorage.getItem("authUser"));
       const r = await apipost.post("/users/details", { id: obj.id });
 
@@ -93,6 +106,22 @@ const Settings = () => {
   useEffect(() => {
     fetchUser();
   }, []);
+
+  // ================================
+  // Load activity logs
+  // ================================
+  const loadLogs = async () => {
+    if (!user.id) return;
+    setLoadingLogs(true);
+    try {
+      const r = await apipost.post("/users/activitylogs", { id: user.id });
+      setLogs(r?.logs || []);
+    } catch {
+      Swal.fire({ icon: "error", text: "Failed to load activity logs", confirmButtonText: "OK" });
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
 
   // ================================
   // Handlers
@@ -174,7 +203,6 @@ const Settings = () => {
 
     setLoading(true);
     try {
-      debugger; 
       const response = await apipost.post("/users/changepass", {
         id: user.id,
         oldPassword: oldPassword,
@@ -227,24 +255,32 @@ const Settings = () => {
                         style={{ objectFit: "cover", width: "120px", height: "120px" }}
                       />
                       <Input type="file" accept="image/*" onChange={handleAvatarChange} />
-                     
-
                     </Col>
                     {/* Info */}
                     <Col md="8">
-                     <h5 className="mt-3">{user.firstname} {user.lastname}</h5>
+                      <h5 className="mt-3">{user.firstname} {user.lastname}</h5>
                       <p className="text-muted d-inline-flex align-items-center" style={{ gap: "10px" }}>
                         @{user.username}
                         <Badge color={user.status === "active" ? "success" : "danger"} pill>
                           {user.status}
                         </Badge>
-                      </p>                    
+                      </p>
                       <p><i className="ri-mail-line me-1"></i> {user.email}</p>
                       <p><i className="ri-phone-line me-1"></i> {user.phone}</p>
                       <p>
                         <i className="ri-map-pin-line me-1"></i>
                         {user.address}, {user.city}, {user.country} {user.zipcode}
                       </p>
+                      <Button
+                        size="sm"
+                        color="info"
+                        onClick={() => {
+                          setLogsOpen(true);
+                          loadLogs();
+                        }}
+                      >
+                        <i className="ri-file-list-2-line me-1"></i> View Activity Logs
+                      </Button>
                     </Col>
                   </Row>
                 </CardBody>
@@ -359,6 +395,40 @@ const Settings = () => {
               </Card>
             </Col>
           </Row>
+
+          {/* Activity Logs Modal */}
+          <Modal
+            isOpen={logsOpen}
+            toggle={() => setLogsOpen(false)}
+            size={logsMaximized ? "xl" : "lg"}
+            fullscreen={logsMaximized}
+            centered
+          >
+<ModalHeader toggle={() => setLogsOpen(false)}>
+  <div className="d-flex align-items-center w-100">
+    <div>
+      <i className="ri-file-list-2-line me-2"></i> Activity Logs
+    </div>
+    <div  style={{ marginLeft: "10px" }}>
+      <Button
+        size="sm"
+        color="light"
+        onClick={() => setLogsMaximized(!logsMaximized)}
+        title={logsMaximized ? "Restore" : "Maximize"}
+      >
+        {logsMaximized ? (
+          <i className="ri-contract-left-right-line"></i>
+        ) : (
+          <i className="ri-fullscreen-line"></i>
+        )}
+      </Button>
+    </div>
+  </div>
+</ModalHeader>
+            <ModalBody>
+              <ActivityLogs logs={logs} loading={loadingLogs} />
+            </ModalBody>
+          </Modal>
         </Container>
       )}
     </div>

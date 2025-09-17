@@ -39,7 +39,7 @@ const Sidebar = ({ layoutType }) => {
       <div className="app-menu navbar-menu border-end">
         <div className="navbar-brand-box" style={{textAlign:"left"}}>
 
-          <Link to="/" className="logo logo-dark">
+          <Link to="/dashboard" className="logo logo-dark">
             <span className="logo-sm">
               <img src={`${process.env.PUBLIC_URL}/images/logo2.png`} alt="" height="55" />
             </span>

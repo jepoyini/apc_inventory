@@ -72,6 +72,21 @@ const UserCard = ({ user, onView, onEdit, onDelete }) => {
           </Badge>
         )}
 
+        {/* Logged Time & Location */}
+        <div className="text-muted small mb-3">
+          <div>Last Logged:</div>
+          {user.logged_time && (
+            <div>
+              <i className="ri-time-line me-1"></i> {user.logged_time}
+            </div>
+          )}
+          {user.logged_location && (
+            <div>
+              <i className="ri-map-pin-line me-1"></i> {user.logged_location}
+            </div>
+          )}
+        </div>
+
         {/* Actions */}
         <div className="d-flex justify-content-center gap-2 mt-2">
           <Button size="sm" color="info" onClick={onView}>

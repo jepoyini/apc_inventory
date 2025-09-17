@@ -8,6 +8,7 @@ import Swal from 'sweetalert2';
 import { useNavigate, Link } from "react-router-dom";
 import getChartColorsArray from "../../Components/Common/ChartsDynamicColor";
 import ReactApexChart from "react-apexcharts";
+import RecentTrackingActivity from "./RecentTrackingActivity";
 
 const DashboardEcommerce = () => {
   const api = new APIClient();
@@ -46,18 +47,10 @@ const recentActivity = [
     }
   };
   const [Userbalance, setUserBalance] = useState({
-    todays_earnings: 0,
-    total_earnings: 0,
-    onhold_earnings: 0,
-    purchased_plans: 0,
-    coded_downlines: 0,
-    reward_wallet: 0,
-    reward_cap: 0,
-    expense_wallet: 0,
-    total_withdrawed: 0,
-    total_downline_members: 0,
-    total_personaly_sponsored: 0,
-    ewallet_balance : 0
+    total_items: 0, 
+    in_transit: 0,
+    total_available: 0, 
+    low_stock: 0,
   });
 
   const [periodType, setPeriodType] = useState("halfyearly");
@@ -262,25 +255,14 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
         const obj = JSON.parse(authUser);
         const uid = obj.id;
         const data = { uid, csrf_token: obj.csrf_token };
-debugger; 
-        const response = await api.post("/checkbalance", data);
 
+        const response = await api.post("/checkbalance", data);
         if (response.status === "success") {
           setUserBalance({
-            todays_earnings: response.todays_earnings,
-            total_earnings: response.total_earnings,
-            growth_rate: response.growth_rate,
-            onhold_earnings: response.onhold_earnings,
-            purchased_plans: response.purchased_plans,
-            coded_downlines: response.coded_downlines,
-            reward_wallet: response.reward_wallet,
-            reward_cap: response.reward_cap,
-            expense_wallet: response.expense_wallet,
-            total_withdrawed: response.total_withdrawed,
-            total_downline_members: response.total_downline_members,
-            total_personaly_sponsored: response.total_personaly_sponsored,
-            gluapp_url: response.glueapp_url,
-            ewallet_balance: response.ewallet_balance
+            total_items:  response.total_items, 
+            in_transit:  response.in_transit,
+            total_available:  response.total_available, 
+            low_stock:  response.low_stock,
           });
 
           setGrowthData([
@@ -295,7 +277,7 @@ debugger;
 
           // Fetch chart data
           setLoadingChart(true);
-          debugger;
+
           const statsRes = await api.post("/warehouses/stat", { uid });
 
           if (statsRes.status === "success" && Array.isArray(statsRes.data)) {
@@ -385,7 +367,9 @@ debugger;
 
                   <Col xl={6}>
 
-                    <Card>
+                    <RecentTrackingActivity />
+
+                    {/* <Card>
                       <CardHeader>
                         <h5 className="card-title mb-0">
                           <i className="ri-activity-line me-2"></i> Recent Activity
@@ -425,7 +409,7 @@ debugger;
                           ))}
                         </div>
                       </CardBody>
-                    </Card>
+                    </Card> */}
 
                   </Col>
 

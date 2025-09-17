@@ -39,7 +39,7 @@ const Widgets = ({ Userbalance })  => {
                                                 prefix=""
                                                 suffix=""
                                                 separator=""
-                                                end={Userbalance.total_personaly_sponsored}
+                                                end={Userbalance.total_items}
                                                 decimals="0"
                                                 duration="4"
                                             />
@@ -76,7 +76,7 @@ const Widgets = ({ Userbalance })  => {
                                                 prefix=""
                                                 suffix=""
                                                 separator=""
-                                                end={Userbalance.total_earnings}
+                                                end={Userbalance.in_transit}
                                                 decimals="0"
                                                 duration="4"
                                             />
@@ -98,7 +98,7 @@ const Widgets = ({ Userbalance })  => {
                             <CardBody>
                                 <div className="d-flex align-items-center">
                                     <div className="flex-grow-1 overflow-hidden">
-                                        <p className="text-uppercase fw-medium text-muted text-truncate mb-0">Total Received</p>
+                                        <p className="text-uppercase fw-medium text-muted text-truncate mb-0">Total Available</p>
                                     </div>
                                     <div className="flex-shrink-0">
                                         <h5 className="fs-14 mb-0 text-muted" >
@@ -114,7 +114,7 @@ const Widgets = ({ Userbalance })  => {
                                                 prefix=""
                                                 suffix=""
                                                 separator=""
-                                                end={Userbalance.expense_wallet}
+                                                end={Userbalance.total_available}
                                                 decimals="0"
                                                 duration="4"
                                             />
@@ -150,7 +150,7 @@ const Widgets = ({ Userbalance })  => {
                                                 prefix=""
                                                 suffix=""
                                                 separator=""
-                                                end={Userbalance.reward_wallet}
+                                                end={Userbalance.low_stock}
                                                 decimals="0"
                                                 duration="4"
                                             />
