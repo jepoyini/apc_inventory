@@ -60,7 +60,7 @@ const statusBadgeClass = (s) =>
                        "badge bg-secondary-subtle text-secondary";
 
 const Inventory = () => {
-  document.title = "Inventory Management | APC Inventory";
+  document.title = "Inventory Management | PNP Inventory";
 
   const [products, setProducts] = useState(INITIAL_PRODUCTS);
 

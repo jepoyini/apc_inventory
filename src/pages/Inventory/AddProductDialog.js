@@ -20,8 +20,15 @@ import {
   Col
 } from "reactstrap";
 import classnames from "classnames";
+import { toast, ToastContainer } from "react-toastify";
+import { APIClient } from "../../helpers/api_helper";
+import { api } from "../../config";
 
-const AddProductDialog = ({ open, onClose, onSubmit, form, setForm, isEditing }) => {
+
+const AddProductDialog = ({ open, onClose,  form, setForm, isEditing, editingId  }) => {
+
+  const apipost = new APIClient();
+
   const [activeTab, setActiveTab] = useState("1");
   const toggleTab = (tab) => {
     if (activeTab !== tab) setActiveTab(tab);
@@ -31,7 +38,60 @@ const AddProductDialog = ({ open, onClose, onSubmit, form, setForm, isEditing })
     setForm((s) => ({ ...s, [field]: value }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    try {
+      debugger; 
+      if (!form.name || !form.category) {
+        alert("Please complete required fields.");
+        return;
+      }
+
+      const payload = {
+        ...form,
+        price: Number(form.price || 0),
+        cost: Number(form.cost || 0),
+        default_warehouse_id: form.default_warehouse_id
+          ? Number(form.default_warehouse_id)
+          : null,
+        reorder_point: Number(form.reorder_point || 0),
+        max_stock: Number(form.max_stock || 0),
+      };
+
+      if (isEditing && editingId) {
+        await apipost.post(`/products/${editingId}/update`, payload);
+        toast.success("Product updated");
+      } else {
+        await apipost.post(`/products/create`, payload);
+        toast.success("Product created");
+      }
+
+      onClose();
+
+      // reload page after short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (e) {
+      console.error(e);
+      toast.error(isEditing ? "Update failed" : "Create failed");
+    }
+  };
+
+const handleSubmit2 = () => {
+  debugger; 
+  if (!form.name || !form.category) {
+    alert("Please complete required fields.");
+    return;
+  }
+  if (typeof onSubmit === "function") {
+    onSubmit();   // ✅ safe call
+  } else {
+    console.error("onSubmit prop is missing or not a function");
+  }
+};
+
+  const handleSubmit3 = () => {
+    debugger;
     if (!form.name || !form.category) {
       alert("Please complete required fields.");
       return;
@@ -46,6 +106,7 @@ const AddProductDialog = ({ open, onClose, onSubmit, form, setForm, isEditing })
         {isEditing ? "Edit Product" : "Add Product"}
       </ModalHeader>
       <ModalBody>
+        <ToastContainer limit={5} />
         {/* Tabs Header */}
         <Nav tabs className="nav-tabs-custom nav-success">
           <NavItem>
@@ -90,7 +151,7 @@ const AddProductDialog = ({ open, onClose, onSubmit, form, setForm, isEditing })
             </FormGroup>
 
             <Row>
-              <Col md={6}>
+              {/* <Col md={6}>
                 <FormGroup>
                   <Label>Serial/SKU</Label>
                   <Input
@@ -99,7 +160,7 @@ const AddProductDialog = ({ open, onClose, onSubmit, form, setForm, isEditing })
                     placeholder="e.g., APF747"
                   />
                 </FormGroup>
-              </Col>
+              </Col> */}
               <Col md={6}>
                 <FormGroup>
                   <Label>Category</Label>
@@ -322,6 +383,7 @@ const AddProductDialog = ({ open, onClose, onSubmit, form, setForm, isEditing })
         </Button>
       </ModalFooter>
     </Modal>
+    
   );
 };
 

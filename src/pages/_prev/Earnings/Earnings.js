@@ -36,7 +36,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { useLocation } from 'react-router-dom';
 
 const VoucherOrderHistory = () => {
-  document.title = "Order History | APC Inventory";
+  document.title = "Order History | PNP Inventory";
   const navigate = useNavigate();
 
   const location = useLocation();

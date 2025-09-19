@@ -35,7 +35,7 @@ const TagChip = ({ label, onClick, active }) => (
 );
 
 const Products = () => {
-  document.title = "Products | IBOPRO";
+  document.title = "Products | PNP";
   const api = new APIClient();
 
   // tiles summary

@@ -6,6 +6,7 @@ const Navdata = () => {
   const api = new APIClient();
   const history = useNavigate();
 
+
   // UI State
   const [isInitiativesOpen, setIsInitiativesOpen] = useState(false);
   const [iscurrentState, setIscurrentState] = useState("Dashboard");
@@ -91,8 +92,9 @@ const Navdata = () => {
   const [isComplaintDaos, setIsComplaintDaos] = useState(false);
   const [isSovereignDaos, setIsSovereignDaos] = useState(false);
   const [isHumanitarianDaos, setIsHumanitarianDaos] = useState(false);
+  const obj = JSON.parse(sessionStorage.getItem("authUser"));
+  const role = obj.role;
   
-
 const location = useLocation();
 
   // Permissions
@@ -109,6 +111,8 @@ const location = useLocation();
   let isRankPartner = false; 
   let isRankAmbassador = false; 
   let isRankHumanitarian = false; 
+
+
 
 
   if (sessionStorage.getItem("authUser")) {
@@ -359,7 +363,7 @@ useEffect(() => {
 
 
 
-const menuItems = [
+let menuItems = [
   { label: "MAIN", isHeader: true },
 
   {
@@ -410,7 +414,11 @@ const menuItems = [
   // },
 ];
 
-
+  if (role === 'Staff') {
+    menuItems = menuItems.filter(
+      item => item.label !== "ADMINISTRATION" && item.id !== "user-management" && item.id !== "warehouses"
+    );
+  }
 
   return <>{menuItems}</>;
 };

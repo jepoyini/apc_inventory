@@ -20,7 +20,7 @@ import Cookies from "js-cookie";
 import WarehouseViewModal from "./WarehouseViewModal";
 
 const Warehouses = () => {
-  document.title = "Warehouses | IBOPRO";
+  document.title = "Warehouses | PNP";
   const apipost = new APIClient();
   const fmt = (n) => Number(n || 0).toLocaleString();
   const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : 0);

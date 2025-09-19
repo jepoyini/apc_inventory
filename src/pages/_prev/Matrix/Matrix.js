@@ -5,7 +5,7 @@ import BreadCrumb from '../../Components/Common/BreadCrumb';
 import maintenanceImg from '../../assets/images/coming-soon-img.png';
 
 const Transactions = () => {
-  document.title="Matrix | APC Inventory";
+  document.title="Matrix | PNP Inventory";
 
   return (
     <React.Fragment>

@@ -214,9 +214,26 @@ const handleItemsChange = async (newItems) => {
     setCreateOpen(true);
   };
 
+const submitAdd = async () => {
+  debugger; 
+  try {
+    const payload = { ...createForm };
+    if (isEditing && editingId) {
+      await apipost.post(`/products/${editingId}/update`, payload);
+      toast.success("Product updated");
+    } else {
+      await apipost.post(`/products/create`, payload);
+      toast.success("Product created");
+    }
+    closeAdd();
+    setTimeout(() => window.location.reload(), 1000);
+  } catch (e) {
+    console.error(e);
+    toast.error(isEditing ? "Update failed" : "Create failed");
+  }
+};
 
-
-  const submitAdd = async () => {
+  const submitAdd2 = async () => {
     try {
       const payload = {
         ...createForm,
@@ -305,7 +322,7 @@ const handleItemsChange = async (newItems) => {
             {/* Left side: Title + SKU */}
             <div>
               <h2 className="mb-0">{product.name}</h2>
-              <div className="text-muted">SKU: {product.sku}</div>
+              {/* <div className="text-muted">SKU: {product.sku}</div> */}
             </div>
 
             {/* Right side: Actions */}
@@ -417,10 +434,10 @@ const handleItemsChange = async (newItems) => {
         {/* Add/Edit Product Dialog */}
         <AddProductDialog
           open={createOpen}
+          onSubmit={submitAdd}
           onClose={closeAdd}
           form={createForm}
           setForm={setCreateForm}
-          onSubmit={submitAdd}
           isEditing={isEditing}
           editingId={editingId}
         />

@@ -12,6 +12,9 @@ const Section = () => {
   const [userName, setUserName] = useState("");
   const [greeting, setGreeting] = useState("");
 
+  const obj = JSON.parse(sessionStorage.getItem("authUser"));
+  const role = obj.role;
+
   useEffect(() => {
     const getGreeting = () => {
       const currentHour = new Date().getHours();
@@ -72,15 +75,17 @@ const Section = () => {
               Start Scan
             </Button>
 
-            <Button
-              color="info"
-              onClick={() => navigate("/warehouses")}
-              className="d-flex align-items-center"
-            >
-              <FeatherIcon icon="layers" className="me-2" size={16} />
-              Warehouses
-            </Button>
-
+            {/* Only show if role is NOT Staff */}
+            {role !== "Staff" && (
+              <Button
+                color="info"
+                onClick={() => navigate("/warehouses")}
+                className="d-flex align-items-center"
+              >
+                <FeatherIcon icon="layers" className="me-2" size={16} />
+                Warehouses
+              </Button>
+            )}
             <Button
               color="warning"
               onClick={() => navigate("/reports")}

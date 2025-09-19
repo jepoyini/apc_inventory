@@ -20,7 +20,7 @@ import { useParams } from 'react-router-dom';
 
 
 const DonationOrderHistory = () => {
-  document.title = "Order History | APC Inventory";
+  document.title = "Order History | PNP Inventory";
   const navigate = useNavigate();
   const api = new APIClient();
 

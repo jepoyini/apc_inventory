@@ -345,21 +345,26 @@ public function recent()
 
     public function scan()
     {
-   
+        global $conn; 
+  
         $db = \Config\Database::connect();
-        $req = $this->request->getJSON(true);
+        $req = $_POST ?: (json_decode(file_get_contents("php://input"), true) ?? []);
+//        $req = $this->request->getJSON(true);
 
         $code        = trim($req['code'] ?? '');
         $action      = $req['action'] ?? null;
         $warehouseId = $req['warehouse_id'] ?? null; // ✅ new
         $userId      = $req['uid'] ?? null;
 
+        
         if (!$code) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Missing code']);
         }
         if (!$action) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'No Action Selected!']);
         }
+
+
         try {
 
             $productId = null;
@@ -951,7 +956,7 @@ if ($search !== '') {
         $p = json_decode(file_get_contents("php://input"), true) ?? [];
 
         // basic validation
-        foreach (['sku','name','category'] as $k) {
+        foreach (['name','category'] as $k) {
             if (empty($p[$k])) return $this->failValidationErrors("$k is required");
         }
 

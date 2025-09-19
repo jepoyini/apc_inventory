@@ -8,7 +8,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
 const Reports = () => {
-  document.title = "Reports & Analytics | APC Inventory";
+  document.title = "Reports | PNP";
   const apipost = new APIClient();
 
   const [period, setPeriod] = useState("7");
@@ -93,7 +93,7 @@ const Reports = () => {
         {/* Header */}
         <div className="d-flex align-items-start justify-content-between flex-wrap gap-2">
           <div>
-            <h2>Products</h2>
+            <h2>Reports and Analytics</h2>
             <p className="text-muted">Comprehensive inventory and movement reports</p>
           </div>
           <div className="d-flex gap-2">

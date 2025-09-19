@@ -252,7 +252,7 @@ const Register = () => {
         navigate("/login"); // Redirect to Dashboard
     };
 
-    document.title = "SignUp | APC Inventory";
+    document.title = "SignUp | PNP Inventory";
     useEffect(() => {
         const script = document.createElement("script");
         script.src = "https://cdn.lordicon.com/bhenfmcm.js";
@@ -296,7 +296,7 @@ const Register = () => {
                                 >
                                 <img
                                     src={`${process.env.PUBLIC_URL}/images/logo2.png`}
-                                    alt="APC logo"
+                                    alt="PNP logo"
                                     height="150"
                                 />
                                 </div>

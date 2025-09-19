@@ -4,7 +4,7 @@ import { APIClient } from "../../helpers/api_helper";
 import BreadCrumb from '../../Components/Common/BreadCrumb';
 
 const OrderHistory = () => {
-  document.title = "Order History | APC Inventory";
+  document.title = "Order History | PNP Inventory";
   const api = new APIClient();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);

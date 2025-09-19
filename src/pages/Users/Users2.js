@@ -47,7 +47,7 @@ const statusBadge = (status) =>
     : "badge bg-danger-subtle text-danger";
 
 const Users = () => {
-  document.title = "User Management | APC Inventory";
+  document.title = "User Management | PNP Inventory";
   const [users] = useState(MOCK_USERS);
   const [search, setSearch] = useState("");
 

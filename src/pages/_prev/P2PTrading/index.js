@@ -20,7 +20,7 @@ import OrderModal from "./OrderModal";
 import MyOrdersModal from "./MyOrdersModal";
 
 const P2PTrading = () => {
-  document.title = "P2PTrading | APC Inventory";
+  document.title = "P2PTrading | PNP Inventory";
   const api = new APIClient();
 
   const [offers, setOffers] = useState([]);

@@ -16,7 +16,7 @@ import Swal from "sweetalert2";
 import "react-toastify/dist/ReactToastify.css";
 
 const Warehouses = () => {
-  document.title = "Warehouses | IBOPRO";
+  document.title = "Warehouses | PNP";
   const api = new APIClient();
   const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : 0);
   const fmt = (n) => Number(n || 0).toLocaleString();

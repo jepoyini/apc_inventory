@@ -20,7 +20,7 @@ import QRCodeGenerator from "./QRCodeGenerator";
 import { useNavigate } from "react-router-dom";
 
 const Products = () => {
-  document.title = "Products | APC";
+  document.title = "Products | PNP";
   const navigate = useNavigate();
   const apipost = new APIClient();
 
@@ -394,7 +394,7 @@ const Products = () => {
                   </Col>
                 </Row>
 
-                <div className="mt-3">Filter by Tags:</div>
+                {/* <div className="mt-3">Filter by Tags:</div>
                 <div className="d-flex flex-wrap mt-2">
                   {tagUniverse.map((t) => (
                     <Badge
@@ -408,7 +408,7 @@ const Products = () => {
                       {t}
                     </Badge>
                   ))}
-                </div>
+                </div> */}
 
                 <div className="text-end mt-2 d-flex justify-content-end align-items-center gap-2">
                   <Button

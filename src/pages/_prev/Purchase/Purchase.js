@@ -14,7 +14,7 @@ import { useNavigate } from "react-router-dom";
 
 const PurchaseForm = () => {
   const navigate = useNavigate();
-  document.title = "Purchase | APC Inventory";
+  document.title = "Purchase | PNP Inventory";
   const api = new APIClient();
 
   const [modal_successMessage, setModalSuccessMessage] = useState(false);
@@ -219,7 +219,7 @@ const PurchaseForm = () => {
     const referralLink = `https://ibopro.com/${obj.username}`;
   
     Swal.fire({
-      title: 'Invite a Friend to Join APC Inventory',
+      title: 'Invite a Friend to Join PNP Inventory',
       html: `
         <div class="container-fluid px-0" style="text-align: left; width: 100%;">
           <div class="row mb-3">
@@ -347,7 +347,7 @@ const PurchaseForm = () => {
               <Row className="justify-content-center mt-5">
                 <Col lg={5}>
                   <div className="text-center mb-4 pb-2">
-                    <h4 className="fw-semibold fs-23">Choose the APC Inventory Donation level that you want to avail</h4>
+                    <h4 className="fw-semibold fs-23">Choose the PNP Inventory Donation level that you want to avail</h4>
                     <p className="text-muted mb-4 fs-15">Select a package to grow your network</p>
                   </div>
                 </Col>

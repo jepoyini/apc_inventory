@@ -86,7 +86,7 @@ const QRScanner = () => {
   };
 
   const sendToServer = async (code) => {
-  
+  debugger; 
     setLoading(true);
     try {
       const payload = {
@@ -280,7 +280,7 @@ const QRScanner = () => {
                       </CardHeader>
                       <CardBody>
                         <ul className="list-unstyled mb-0 small">
-                          <li><Badge className="created-status mw-70 me-2">CREATED</Badge> Product created/defined</li>
+                          {/* <li><Badge className="created-status mw-70 me-2">CREATED</Badge> Product created/defined</li> */}
                           <li><Badge color="success" className="mw-70 me-2">AVAILABLE</Badge> Items entered, ready at origin</li>
                           <li><Badge color="info" className="mw-70 me-2">IN-TRANSIT</Badge> On the way to warehouse</li>
                           <li><Badge className="mw-70 checkin-status me-2">CHECK-IN</Badge> Under verification/audit</li>

@@ -676,7 +676,6 @@ const QuantityManager = ({ productId, productname, readonly = false }) => {
         onChange={(e) => setStatusForm({ ...statusForm, status: e.target.value })}
       >
         <option value="">-- Choose --</option>
-        <option value="CREATED">CREATED</option>
         <option value="AVAILABLE">AVAILABLE</option>
         <option value="IN_TRANSIT">IN-TRANSIT</option>
         <option value="CHECK_IN">CHECK-IN</option>

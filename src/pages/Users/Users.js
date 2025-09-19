@@ -20,7 +20,7 @@ import { hasPermission } from "../../helpers/permissions";
 import Swal from "sweetalert2";
 
 const Users = () => {
-  document.title = "User Management | APC";
+  document.title = "User Management | PNP";
   const apipost = new APIClient();
 
   const [filtersOpen, setFiltersOpen] = useState(true);

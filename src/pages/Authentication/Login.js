@@ -170,7 +170,7 @@ useEffect(() => {
     }, [buttonloading]);
 
 
-    document.title = "SignIn | APC Inventory";
+    document.title = "SignIn | PNP Inventory";
     return (
         <React.Fragment>
             <ParticlesAuth>
@@ -187,7 +187,7 @@ useEffect(() => {
                                 >
                                 <img
                                     src={`${process.env.PUBLIC_URL}/images/logo2.png`}
-                                    alt="APC Inventory"
+                                    alt="PNP Inventory"
                                     height="150"
                                 />
                                 </div>

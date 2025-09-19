@@ -13,7 +13,7 @@ import "react-toastify/dist/ReactToastify.css";
 import Swal from "sweetalert2";
 
 const P2PTrading = () => {
-  document.title = "P2PTrading | APC Inventory";
+  document.title = "P2PTrading | PNP Inventory";
   const navigate = useNavigate();
   const api = new APIClient();
 

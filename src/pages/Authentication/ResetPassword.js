@@ -79,7 +79,7 @@ const ResetPassword = (props) => {
         setLoading(false);
     };
 
-    document.title = "Reset Password | APC";
+    document.title = "Reset Password | PNP";
     return (
         <React.Fragment>
             <ParticlesAuth>

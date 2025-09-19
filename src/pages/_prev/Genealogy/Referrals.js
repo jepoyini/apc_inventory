@@ -41,7 +41,7 @@ const pageSize = 5; // Number of items per page
 
 const InvoiceList = () => {
    const api = new APIClient();
-  document.title = "Referrals  | APC Inventory";
+  document.title = "Referrals  | PNP Inventory";
   const navigate = useNavigate();
   const { id } = useParams();
 

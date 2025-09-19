@@ -9,7 +9,7 @@ import { Spinner } from 'reactstrap';
 
 const Withdrawal = () => {
 
-    document.title = "Admin Withdrawal | APC";
+    document.title = "Admin Withdrawal | PNP";
     const maxAmount = 10000;
     const [uid, setUid] = useState("");
     const [fromUser, setFromUser] = useState("");    

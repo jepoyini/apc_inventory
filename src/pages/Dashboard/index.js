@@ -12,7 +12,7 @@ import RecentTrackingActivity from "./RecentTrackingActivity";
 
 const DashboardEcommerce = () => {
   const api = new APIClient();
-  document.title = "APC Inventory";
+  document.title = "PNP Inventory";
   const navigate = useNavigate();
 
   const [siteChecked, setSiteChecked] = useState({}); 
