@@ -53,7 +53,7 @@ const Settings = () => {
     address: "",
     city: "",
     country: "",
-    zipcode: "",
+    zip: "",
     status: "",
     avatar: null, // backend path or null
     avatarFile: null, // file object for preview
@@ -85,18 +85,26 @@ const Settings = () => {
   // ================================
   const fetchUser = async () => {
     try {
+      debugger; 
       const obj = JSON.parse(sessionStorage.getItem("authUser"));
-      const r = await apipost.post("/users/details", { id: obj.id });
+      const r = await apipost.post("/users/details", { id: obj.id, uid: obj.id });
 
-      if (r?.user) {
-        setUser((prev) => ({
-          ...prev,
-          ...r.user,
-          avatar: r.user.avatar,
-          avatarFile: null, // reset preview
-        }));
+      if (r?.status == "error")
+      {
+        debugger; 
+             Swal.fire({ icon: "error", text: "Missing ID not found. Try to reopen the page.", confirmButtonText: "OK" });
+      } else {
+
+        if (r?.user) {
+          setUser((prev) => ({
+            ...prev,
+            ...r.user,
+            avatar: r.user.avatar,
+            avatarFile: null, // reset preview
+          }));
+        }
+        setPageLoading(false);
       }
-      setPageLoading(false);
     } catch (error) {
       console.error("Error fetching user data:", error);
       setPageLoading(false);
@@ -150,6 +158,7 @@ const Settings = () => {
   // Save profile
   // ================================
   const updateProfile = async () => {
+    debugger; 
     setLoading(true);
     try {
       const fd = new FormData();
@@ -203,6 +212,7 @@ const Settings = () => {
 
     setLoading(true);
     try {
+      debugger; 
       const response = await apipost.post("/users/changepass", {
         id: user.id,
         oldPassword: oldPassword,
@@ -269,7 +279,7 @@ const Settings = () => {
                       <p><i className="ri-phone-line me-1"></i> {user.phone}</p>
                       <p>
                         <i className="ri-map-pin-line me-1"></i>
-                        {user.address}, {user.city}, {user.country} {user.zipcode}
+                        {user.address}, {user.city}, {user.country} {user.zip}
                       </p>
                       <Button
                         size="sm"
@@ -354,12 +364,22 @@ const Settings = () => {
                             </Input>
                           </Col>
                           <Col lg={4}>
-                            <Label>Zipcode</Label>
-                            <Input type="text" name="zipcode" value={user.zipcode || ""} onChange={handleInputChange} />
+                            <Label>zip</Label>
+                            <Input type="text" name="zip" value={user.zip || ""} onChange={handleInputChange} />
                           </Col>
                           <Col lg={12} className="mt-3">
-                            <Button color="warning" onClick={updateProfile} disabled={loading}>
-                              {loading ? <Spinner size="sm" /> : "Update Profile"}
+                            <Button 
+                              color="warning" 
+                              onClick={updateProfile} 
+                              disabled={loading}
+                              className="d-flex align-items-center justify-content-center"
+                              style={{ minWidth: "150px" }}  // adjust width so spinner + text fit
+                            >
+                              {loading ? (
+                                <Spinner size="sm" />
+                              ) : (
+                                "Update Profile"
+                              )}
                             </Button>
                           </Col>
                         </Row>

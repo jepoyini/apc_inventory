@@ -25,7 +25,168 @@ class WarehouseController extends ResourceController
     }
 
 
-    public function getWarehousesStat()
+
+public function getWarehousesStat()
+{
+    $db = \Config\Database::connect();
+
+    try {
+
+        // --- Read uid ---
+        $p   = json_decode(file_get_contents("php://input"), true) ?? [];
+        $uid = isset($p['uid']) ? (int)$p['uid'] : 0;
+
+        $userWarehouseId = null;
+
+        if ($uid > 0) {
+            $userRow = $db->table('users')
+                ->select('warehouse_id')
+                ->where('id', $uid)
+                ->get()
+                ->getRowArray();
+
+            if (!empty($userRow['warehouse_id'])) {
+                $userWarehouseId = (int)$userRow['warehouse_id'];
+            }
+        }
+
+        // ============================================
+        // CASE 1: USER IS ASSIGNED TO A WAREHOUSE
+        // Only return that warehouse + compute sums
+        // ============================================
+        if ($userWarehouseId !== null) {
+
+            // current_stock from products table (sum of qty)
+            $stockRow = $db->table('products')
+                ->select('SUM(qty) AS stock')
+                ->where('warehouse_id', $userWarehouseId)
+                ->get()
+                ->getRowArray();
+
+            $stock = (int)($stockRow['stock'] ?? 0);
+
+            // available_qty from items joined to products
+            $availRow = $db->table('items i')
+                ->select('COUNT(*) AS c')
+                ->join('products p', 'p.id = i.product_id')
+                ->where('p.warehouse_id', $userWarehouseId)
+                ->whereIn('i.status', ['AVAILABLE', 'IN_STOCK'])
+                ->get()
+                ->getRowArray();
+
+            $availableQty = (int)($availRow['c'] ?? 0);
+
+            // sold_qty from items joined to products
+            $soldRow = $db->table('items i')
+                ->select('COUNT(*) AS c')
+                ->join('products p', 'p.id = i.product_id')
+                ->where('p.warehouse_id', $userWarehouseId)
+                ->where('i.status', 'SOLD')
+                ->get()
+                ->getRowArray();
+
+            $soldQty = (int)($soldRow['c'] ?? 0);
+
+            // fetch warehouse info
+            $whRow = $db->table('warehouses')
+                ->select('id, name, location')
+                ->where('id', $userWarehouseId)
+                ->get()
+                ->getRowArray();
+
+            return $this->response->setJSON([
+                'status' => 'success',
+                'data' => [[
+                    'id'             => $whRow['id'],
+                    'name'           => $whRow['name'],
+                    'location'       => $whRow['location'] ?? '',
+                    'current_stock'  => $stock,
+                    'available_qty'  => $availableQty,
+                    'sold_qty'       => $soldQty,
+                ]],
+                'warehouse_filter_applied' => true,
+                'warehouse_id'             => $userWarehouseId,
+            ]);
+        }
+
+        // ============================================
+        // CASE 2: ADMIN (NO warehouse_id)
+        // Return ALL warehouses with dynamic stock
+        // ============================================
+
+        // Get all warehouses first
+        $whRows = $db->table('warehouses')
+            ->select('id, name, location')
+            ->orderBy('name', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        $result = [];
+
+        foreach ($whRows as $wh) {
+
+            $wid = (int)$wh['id'];
+
+            // current_stock from products table (sum qty)
+            $stockRow = $db->table('products')
+                ->select('SUM(qty) AS stock')
+                ->where('warehouse_id', $wid)
+                ->get()
+                ->getRowArray();
+
+            $stock = (int)($stockRow['stock'] ?? 0);
+
+            // available_qty from items joined to products
+            $availRow = $db->table('items i')
+                ->select('COUNT(*) AS c')
+                ->join('products p', 'p.id = i.product_id')
+                ->where('p.warehouse_id', $wid)
+                ->whereIn('i.status', ['AVAILABLE', 'IN_STOCK'])
+                ->get()
+                ->getRowArray();
+
+            $availableQty = (int)($availRow['c'] ?? 0);
+
+            // sold_qty from items joined to products
+            $soldRow = $db->table('items i')
+                ->select('COUNT(*) AS c')
+                ->join('products p', 'p.id = i.product_id')
+                ->where('p.warehouse_id', $wid)
+                ->where('i.status', 'SOLD')
+                ->get()
+                ->getRowArray();
+
+            $soldQty = (int)($soldRow['c'] ?? 0);
+
+            $result[] = [
+                'id'             => $wid,
+                'name'           => $wh['name'],
+                'location'       => $wh['location'],
+                'current_stock'  => $stock,
+                'available_qty'  => $availableQty,
+                'sold_qty'       => $soldQty,
+            ];
+        }
+
+        return $this->response->setJSON([
+            'status'                  => 'success',
+            'data'                    => $result,
+            'warehouse_filter_applied'=> false,
+        ]);
+
+    } catch (\Exception $e) {
+        return $this->response->setJSON([
+            'status'  => 'error',
+            'message' => 'Failed to retrieve warehouses.',
+            'error'   => $e->getMessage(),
+        ]);
+    }
+}
+
+
+
+
+    public function getWarehousesStat1()
     {
         $db = \Config\Database::connect();
 

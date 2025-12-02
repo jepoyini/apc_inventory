@@ -23,7 +23,10 @@ const Products = () => {
   document.title = "Products | PNP";
   const navigate = useNavigate();
   const apipost = new APIClient();
-
+  const authUser = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+  const role = authUser.role;
+  const isAdmin = authUser?.role === "Admin";
+  
   const [totalRecords, setTotalRecords] = useState(0);
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -75,7 +78,8 @@ const Products = () => {
   useEffect(() => {
     const saved = Cookies.get("products_state");
     if (saved) {
-      try {
+      debugger; 
+        try {
         const parsed = JSON.parse(saved);
         searchRef.current = parsed.search || "";
         categoryRef.current = parsed.category || "";
@@ -92,7 +96,19 @@ const Products = () => {
       }
     }
   }, []);
-
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case "CREATED": return <Badge className="created-status mw-70">CREATED</Badge>;
+      case "AVAILABLE": return <Badge color="success" className="mw-70">AVAILABLE</Badge>;
+      case "IN_TRANSIT": return <Badge color="info" className="mw-70">IN-TRANSIT</Badge>;
+      case "IN_STOCK": return <Badge color="primary" className="mw-70">IN-STOCK</Badge>;
+      case "SOLD": return <Badge color="dark" className="mw-70">SOLD</Badge>;
+      case "DISPOSED": return <Badge color="danger" className="mw-70">DISPOSED</Badge>;
+      case "RETURNED": return <Badge className="returned-status mw-70">RETURNED</Badge>;
+      case "CHECK_IN": return <Badge className="returned-status mw-70">CHECK-IN</Badge>;
+      default: return <Badge color="secondary" className="mw-70">{status}</Badge>;
+    }
+  };
   // --- Save state to cookies ---
   useEffect(() => {
     Cookies.set(
@@ -140,19 +156,23 @@ const Products = () => {
     } catch { toast.error("Delete failed"); }
   };
 
-  const load = async (page) => {
+  // ✅ accepts optional limit
+  const load = async (page, limit = pageSize) => {
     setLoading(true);
     try {
+      debugger; 
+      const obj = JSON.parse(sessionStorage.getItem("authUser"));
       const r = await apipost.post(`/products`, {
-        page, limit: pageSize,
+        page, limit,
         search: searchRef.current, category: categoryRef.current,
         status: statusRef.current, stockLevel: stockRef.current,
         warehouse: warehouseRef.current, tags: tagChips,
+        uid: obj.id
       });
       setRows(r?.products || []);
       const total = r?.totalRecords ?? 0;
       setTotalRecords(total);
-      setTotalPages(Math.max(1, Math.ceil(total / pageSize)));
+      setTotalPages(Math.max(1, Math.ceil(total / limit)));
       setSummary(r?.summary || summary);
     } catch { toast.error("Failed to load products"); }
     finally { setLoading(false); }
@@ -223,13 +243,20 @@ const Products = () => {
         {/* Header */}
         <Row className="mb-2">
           <Col><h2>Products</h2></Col>
-          <Col className="text-end">
-            <Button color="primary" onClick={openAdd}><i className="ri-add-line me-1" /> Add Product</Button>
-          </Col>
+
+            {isAdmin && (
+              <Col className="text-end">
+                <Button color="primary" onClick={openAdd}>
+                  <i className="ri-add-line me-1" /> Add Product
+                </Button>
+              </Col>
+            )}
         </Row>
 
         {/* Summary Widgets */}
         <Row className="g-3 mb-3">
+
+          {/* TOTAL PRODUCTS */}
           <Col xl={3} md={4}>
             <Card className="card-animate"><CardBody>
               <div className="d-flex align-items-center">
@@ -248,59 +275,63 @@ const Products = () => {
             </CardBody></Card>
           </Col>
 
+          {/* AVAILABLE */}
           <Col xl={3} md={4}>
             <Card className="card-animate"><CardBody>
               <div className="d-flex align-items-center">
                 <div className="flex-grow-1">
-                  <p className="text-muted mb-0">Inventory Value</p>
+                  <p className="text-muted mb-0">Available</p>
                 </div>
                 <div className="avatar-sm flex-shrink-0">
                   <span className="avatar-title rounded bg-success-subtle fs-3">
-                    <i className="ri-currency-line text-success"></i>
+                    <i className="ri-checkbox-circle-line text-success"></i>
                   </span>
                 </div>
               </div>
               <h4 className="fs-22 fw-semibold mt-3 mb-0">
-                ₱<CountUp end={summary.totalValue} duration={2} separator="," decimals={2} />
+                <CountUp end={summary.available_qty || 0} duration={2} />
               </h4>
             </CardBody></Card>
           </Col>
 
+          {/* IN-TRANSIT */}
           <Col xl={3} md={4}>
             <Card className="card-animate"><CardBody>
               <div className="d-flex align-items-center">
                 <div className="flex-grow-1">
-                  <p className="text-muted mb-0">Active Products</p>
+                  <p className="text-muted mb-0">In-Transit</p>
                 </div>
                 <div className="avatar-sm flex-shrink-0">
                   <span className="avatar-title rounded bg-info-subtle fs-3">
-                    <i className="ri-checkbox-circle-line text-info"></i>
+                    <i className="ri-truck-line text-info"></i>
                   </span>
                 </div>
               </div>
               <h4 className="fs-22 fw-semibold mt-3 mb-0">
-                <CountUp end={summary.activeProducts} duration={2} />
+                <CountUp end={summary.in_transit_qty || 0} duration={2} />
               </h4>
             </CardBody></Card>
           </Col>
 
+          {/* SOLD */}
           <Col xl={3} md={4}>
             <Card className="card-animate"><CardBody>
               <div className="d-flex align-items-center">
                 <div className="flex-grow-1">
-                  <p className="text-muted mb-0">Low / Out</p>
+                  <p className="text-muted mb-0">Sold</p>
                 </div>
                 <div className="avatar-sm flex-shrink-0">
                   <span className="avatar-title rounded bg-danger-subtle fs-3">
-                    <i className="ri-error-warning-line text-danger"></i>
+                    <i className="ri-shopping-bag-3-line text-danger"></i>
                   </span>
                 </div>
               </div>
               <h4 className="fs-22 fw-semibold mt-3 mb-0">
-                <CountUp end={summary.lowStock} duration={2} /> / <CountUp end={summary.outOfStock} duration={2} />
+                <CountUp end={summary.sold_qty || 0} duration={2} />
               </h4>
             </CardBody></Card>
           </Col>
+
         </Row>
 
         {/* Filters */}
@@ -352,18 +383,20 @@ const Products = () => {
                       <option>Signage</option>
                     </Input>
                   </Col>
-                  <Col md={2}>
-                    <Input
-                      type="select"
-                      value={warehouseRef.current}
-                      onChange={(e) => {
-                        warehouseRef.current = e.target.value;
-                        onFilterChange();
-                      }}
-                    >
-                      <option value="">All Warehouses</option>
-                    </Input>
-                  </Col>
+                  {role === "Admin" && (
+                    <Col md={2}>
+                      <Input
+                        type="select"
+                        value={warehouseRef.current}
+                        onChange={(e) => {
+                          warehouseRef.current = e.target.value;
+                          onFilterChange();
+                        }}
+                      >
+                        <option value="">All Warehouses</option>
+                      </Input>
+                    </Col>
+                  )}
                   <Col md={2}>
                     <Input
                       type="select"
@@ -394,23 +427,7 @@ const Products = () => {
                   </Col>
                 </Row>
 
-                {/* <div className="mt-3">Filter by Tags:</div>
-                <div className="d-flex flex-wrap mt-2">
-                  {tagUniverse.map((t) => (
-                    <Badge
-                      key={t}
-                      color={tagChips.includes(t) ? "primary" : "info"}
-                      pill
-                      className="me-2 mb-2"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => toggleTag(t)}
-                    >
-                      {t}
-                    </Badge>
-                  ))}
-                </div> */}
-
-                <div className="text-end mt-2 d-flex justify-content-end align-items-center gap-2">
+                <div className="text-end mt-2 d-flex justify-content align-items-center gap-2">
                   <Button
                     className="btn btn-light waves-effect waves-light"
                     onClick={clearFilters}
@@ -422,9 +439,7 @@ const Products = () => {
                     onClick={toggleView}
                   >
                     <i
-                      className={`me-1 ${
-                        view === "grid" ? "ri-list-check-2" : "ri-layout-grid-line"
-                      }`}
+                      className={`me-1 ${view === "grid" ? "ri-list-check-2" : "ri-layout-grid-line"}`}
                     />{" "}
                     {view === "grid" ? "List" : "Grid"} View
                   </Button>
@@ -434,24 +449,91 @@ const Products = () => {
           </CardBody>
         </Card>
 
-
-
         {/* Table or Grid */}
         {view === "list" ? (
-          <Card><CardBody>
-            <TableContainer
-              columns={columns} data={rows} loading={loading}
-              currentPage={currentPage} totalPages={totalPages}
-              totalRecords={totalRecords} pageSize={pageSize}
-              onPageChange={setCurrentPage}
-              onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1); load(1); }}
-              theadClass="table-light" tableClass="align-middle table-nowrap" divClass="table-responsive"
-            />
-          </CardBody></Card>
+          <Card>
+            <CardBody>
+              <TableContainer
+                columns={[
+                  { header: "ID", enableColumnFilter: false, accessorKey: "id" },
+                  {
+                    header: "Name", enableColumnFilter: false, accessorKey: "name",
+                    cell: (c) => (
+                      <div
+                        className="d-flex align-items-center"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => handleViewDetails(c.row.original.id)}
+                      >
+                        <img
+                          src={prefixUrl(c.row.original.primary_image)}
+                          alt=""
+                          width="60"
+                          height="45"
+                          className="me-2 rounded"
+                        />
+                        <span>{c.getValue()}</span>
+                      </div>
+                    ),
+                  },
+                  { header: "Category", enableColumnFilter: false, accessorKey: "category" },
+                  {
+                    header: "Status",
+                    enableColumnFilter: false,
+                    accessorKey: "status",
+                    cell: (c) => getStatusBadge(c.getValue()),
+                  },
+                  { header: "Quantity", enableColumnFilter: false, accessorKey: "total_qty" }, // ✅ NEW
+                  {
+                    header: "Price",
+                    enableColumnFilter: false,
+                    accessorKey: "price",
+                    cell: (c) => `${Number(c.getValue() || 0).toFixed(2)}`,
+                  },
+                  {
+                    header: "Available",
+                    enableColumnFilter: false,
+                    accessorKey: "available_qty",
+                  },
+                  {
+                    header: "Action",
+                    cell: (c) => (
+                      <UncontrolledDropdown>
+                        <DropdownToggle tag="button" className="btn btn-sm btn-soft-primary">
+                          <i className="ri-more-fill" />
+                        </DropdownToggle>
+                        <DropdownMenu>
+                          <DropdownItem onClick={() => handleViewDetails(c.row.original.id)}>View</DropdownItem>
+                          <DropdownItem onClick={() => openEdit(c.row.original)}>Edit</DropdownItem>
+                          <DropdownItem onClick={() => onDeleteProduct(c.row.original.id)}>Delete</DropdownItem>
+                          <DropdownItem onClick={() => openQr(c.row.original)}>QR</DropdownItem>
+                        </DropdownMenu>
+                      </UncontrolledDropdown>
+                    ),
+                  },
+                ]}
+                data={rows}
+                loading={loading}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalRecords={totalRecords}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(s) => {
+                  debugger; 
+                  let newSize = s === "all" ? totalRecords : Number(s);
+                  setPageSize(newSize);
+                  setCurrentPage(1);
+                  load(1, newSize); // ✅ ensure limit updates
+                }}
+                theadClass="table-light"
+                tableClass="align-middle table-nowrap"
+                divClass="table-responsive"
+              />
+            </CardBody>
+          </Card>
         ) : (
           <>
-
-          {/* Row Count */}
+            {/* Row Count */}
             <Row className="mb-2">
               <Col>
                 <small className="text-muted">
@@ -468,8 +550,23 @@ const Products = () => {
             {/* Grid Pagination */}
             <Row className="align-items-center mt-3 g-3">
               <div className="col-sm d-flex gap-3 align-items-center">
-                <Input className="w-auto" type="select" value={pageSize} onChange={(e) => { setPageSize(+e.target.value); setCurrentPage(1); load(1); }}>
-                  <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option>
+                <Input
+                  className="w-auto"
+                  type="select"
+                  value={pageSize === totalRecords ? "all" : pageSize}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const newSize = val === "all" ? totalRecords : +val;
+                    setPageSize(newSize);
+                    setCurrentPage(1);
+                    load(1, newSize);
+                  }}
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value="all">All</option>
                 </Input>
                 <div className="text-muted">Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalRecords)} of {totalRecords}</div>
               </div>

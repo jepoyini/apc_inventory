@@ -5,9 +5,9 @@ import { APIClient } from "../helpers/api_helper";
 const Navdata = () => {
   const api = new APIClient();
   const history = useNavigate();
-
-
-  // UI State
+  const auth = JSON.parse(sessionStorage.getItem("authUser"));
+  const userRole = auth?.role;      // Admin / Manager / Staff
+  const [isReports, setIsReports] = useState(false);  // UI State
   const [isInitiativesOpen, setIsInitiativesOpen] = useState(false);
   const [iscurrentState, setIscurrentState] = useState("Dashboard");
   const [holdingTankCount, setHoldingTankCount] = useState(0);
@@ -198,6 +198,7 @@ const location = useLocation();
     document.body.classList.remove("twocolumn-panel");
 
     const stateResetters = {
+      "Reports": setIsReports,
       Dashboard: setIsDashboard,
       Resources: setIsResources,
       "E-Wallet": setIsWallet,
@@ -359,6 +360,16 @@ useEffect(() => {
     setIscurrentState("Hyips");
   }
 
+
+  // Admin Projects > Humanitarian DAOs
+  if (
+    path.startsWith("/reports")
+  ) {
+    debugger; 
+    setIsReports(true);
+    setIscurrentState("Reports");
+  }
+
 }, [location]);
 
 
@@ -391,12 +402,52 @@ let menuItems = [
     link: "/warehouses",
     icon: "ri-building-2-line",
   },
-  {
-    id: "reports",
-    label: "Reports",
-    link: "/reports",
-    icon: "ri-bar-chart-2-line",
+
+{
+  id: "reports",
+  label: "Reports",
+  icon: "ri-bar-chart-2-line",
+  link: "/#",
+  stateVariables: isReports,
+  click: function (e) {
+    e.preventDefault();
+    setIsReports(!isReports);
+    setIscurrentState("Reports");
+    updateIconSidebar(e);
   },
+  subItems: [
+    // ⭐ SHOW ONLY IF ADMIN
+    ...(userRole === "Admin"
+      ? [
+          {
+            id: "reports-analytics",
+            label: "Analytics Overview",
+            link: "/reports",
+            icon: "ri-brain-line",
+            parentId: "reports",
+          },
+        ]
+      : []),
+
+    // ⭐ ALWAYS visible
+    {
+      id: "reports-products",
+      label: "Product Summary",
+      link: "/productsummary",
+      icon: "ri-bar-chart-grouped-line",
+      parentId: "reports",
+    },
+    {
+      id: "reports-warehouse-items",
+      label: "Warehouse by Items",
+      link: "/warehousebyitems",
+      icon: "ri-store-2-line",
+      parentId: "reports",
+    },
+  ],
+},
+
+
 
   { label: "ADMINISTRATION", isHeader: true },
 

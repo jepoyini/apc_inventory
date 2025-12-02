@@ -56,7 +56,11 @@ const RecentTrackingActivity = () => {
   const loadActivities = async (pageNum = 1) => {
     setLoading(true);
     try {
-      const res = await apipost.post(`/products/recent`, { page: pageNum });
+      const obj = JSON.parse(sessionStorage.getItem("authUser"));
+      const res = await apipost.post(`/products/recent`, { 
+        page: pageNum , 
+        uid: obj.id
+      });
       if (res?.activities?.length > 0) {
         setActivities((prev) => [...prev, ...res.activities]);
         setHasMore(res.activities.length >= 10); // assume API returns 10 at a time

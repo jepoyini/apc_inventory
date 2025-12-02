@@ -13,8 +13,11 @@ import RecentTrackingActivity from "./RecentTrackingActivity";
 const DashboardEcommerce = () => {
   const api = new APIClient();
   document.title = "PNP Inventory";
-  const navigate = useNavigate();
 
+  
+  const navigate = useNavigate();
+  const auth = JSON.parse(sessionStorage.getItem("authUser"));
+  const isAdmin = auth?.role === "Admin";
   const [siteChecked, setSiteChecked] = useState({}); 
   const [siteSponsorhasrecord, setSiteSponsorhasrecord] = useState({}); 
   const [sponsorhasfirstfive, setSponsorHasFirstFive] = useState(); 
@@ -353,13 +356,17 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
             <Col>
               <div className="h-100">
 
-                <Row>
-                  <Col xl={12} order={{ xs: 2, xl: 1 }}>
-                    <Section rightClickBtn={toggleRightColumn} />
-                    <Widget Userbalance={Userbalance} />                  
-                  </Col>
 
-                </Row>
+               
+                  <Row>
+                    <Col xl={12} order={{ xs: 2, xl: 1 }}>
+                      <Section rightClickBtn={toggleRightColumn} />
+                       {isAdmin && (
+                      <Widget Userbalance={Userbalance} />                  
+                      )}
+                    </Col>
+                  </Row>
+                
 
                 <Row>
 
@@ -412,34 +419,100 @@ const IBOActionCard = ({ title, description, link, withCheckbox = false, checkbo
                     </Card> */}
 
                   </Col>
+<Col xl={6}>
+  <Card className="card-height-100">
+    <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
+      <h4 className="card-title mb-0 flex-grow-1">
+        {isAdmin ? "Stock per Warehouse" : "My Warehouse Stock"}
+      </h4>
 
-                  <Col xl={6}>
-                    <Card className="card-height-100">
-                      <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
-                        <h4 className="card-title mb-0 flex-grow-1">Stock per Warehouse</h4>
-                        <div className="text-muted small">
-                          <span className="me-3">Total Warehouses: {totalCountries}</span>
-                          <span>Total Stocks: {totalUsers}</span>
-                        </div>
-                      </div>
-                      <div className="card-body p-0">
-                        <div id="countries_charts" className="apex-charts" dir="ltr">
-                          {loadingChart ? (
-                            <div className="text-center py-5">
-                              <div className="spinner-border text-info" role="status">
-                                <span className="visually-hidden">Loading chart...</span>
-                              </div>
-                            </div>
-                          ) : (
-                            <SessionsByCountriesCharts
-                              dataColors='["--vz-info"]'
-                              downlineStats={downlineStats}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  </Col>
+      {isAdmin ? (
+        <div className="text-muted small">
+          <span className="me-3">Total Warehouses: {totalCountries}</span>
+          <span>Total Stocks: {totalUsers}</span>
+        </div>
+      ) : (
+        <div className="text-muted small">
+          <span>
+            Current Stock:&nbsp;
+            {Array.isArray(downlineStats) && downlineStats[0]
+              ? downlineStats[0].current_stock
+              : 0}
+          </span>
+        </div>
+      )}
+    </div>
+
+    <div className="card-body">
+      {loadingChart ? (
+        <div className="text-center py-5">
+          <div className="spinner-border text-info" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
+        </div>
+      ) : isAdmin ? (
+        /* ─────────── ADMIN: keep chart ─────────── */
+        <div id="countries_charts" className="apex-charts" dir="ltr">
+          <SessionsByCountriesCharts
+            dataColors='["--vz-info"]'
+            downlineStats={downlineStats}
+          />
+        </div>
+      ) : (
+        /* ─────────── NON-ADMIN: no chart, detailed summary ─────────── */
+        (() => {
+          const myWh =
+            Array.isArray(downlineStats) && downlineStats.length > 0
+              ? downlineStats[0]
+              : null;
+
+          if (!myWh) {
+            return (
+              <p className="text-muted mb-0">
+                No warehouse data available for your account.
+              </p>
+            );
+          }
+
+          const currentStock = Number(myWh.current_stock || 0);
+          const availableQty = Number(myWh.available_qty || 0);
+          const soldQty = Number(myWh.sold_qty || 0);
+
+          return (
+            <div>
+              <h5 className="mb-1">{myWh.name}</h5>
+              <p className="text-muted mb-3">
+                This is the warehouse assigned to your account.
+              </p>
+
+              <div className="d-flex flex-wrap gap-3">
+                {/* Available */}
+                <div className="border rounded p-3 flex-fill">
+                  <p className="text-muted mb-1">Available</p>
+                  <h4 className="mb-0 text-success">{availableQty}</h4>
+                </div>
+
+                {/* Sold */}
+                <div className="border rounded p-3 flex-fill">
+                  <p className="text-muted mb-1">Sold</p>
+                  <h4 className="mb-0 text-danger">{soldQty}</h4>
+                </div>
+
+                {/* Total / Current Stock */}
+                <div className="border rounded p-3 flex-fill">
+                  <p className="text-muted mb-1">Total Products</p>
+                  <h4 className="mb-0">{currentStock}</h4>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      )}
+    </div>
+  </Card>
+</Col>
+
+
 
                 </Row>
               </div>

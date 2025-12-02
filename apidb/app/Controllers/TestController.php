@@ -9,8 +9,62 @@ include 'app/Helpers/functions.php';
 
 class TestController extends ResourceController
 {
+
+     public function Sendemail()
+     {
+
+            // Recipient
+            $to = "jepoyini@yahoo.com";
+
+            // Subject
+            $orderNumber = "TEST0001";
+            $lineItem    = 1;
+            $subject = "Approval Photo for Order # {$orderNumber} Line Item # {$lineItem}";
+
+            // Message (HTML)
+            $message = '
+            <html>
+            <head>
+              <title>Approval Photo for Order</title>
+            </head>
+            <body>
+              <p>Hi <b>Customer\'s First Name</b>,</p>
+              <p>Good day.</p>
+              <p>Kindly check the attached photo of the finished product thoroughly for your review and approval.</p>
+              <p>Let us know if it is approved or if there are any corrections.</p>
+              <p>Once we receive your confirmation, we will arrange for shipment on our next scheduled delivery.</p>
+              <p>Also, verify that your shipping address below is correct:</p>
+              <p><b>
+                Customer\'s Complete Name<br>
+                Business Name or Department (if included)<br>
+                Complete Shipping Address
+              </b></p>
+              <p>Please note that once an order is approved in writing, any subsequent errors found after delivery will be the responsibility of the customer.</p>
+              <p>I look forward to hearing from you soon.</p>
+              <p>Kind regards,<br><b>Sender\'s Complete Name</b></p>
+            </body>
+            </html>
+            ';
+
+            // Headers
+            $headers  = "MIME-Version: 1.0" . "\r\n";
+            $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
+            $headers .= "From: APC CRM <approvals@americanplaquecompany.com>" . "\r\n";
+            $headers .= "Reply-To: approvals@americanplaquecompany.com" . "\r\n";
+
+            // Send email
+            if (mail($to, $subject, $message, $headers)) {
+                echo "Approval email sent successfully!";
+            } else {
+                echo "Failed to send approval email.";
+            }
+    }
+
     public function helloWorld()
     {
+      $this->Sendemail(); 
+      die('done');
+
       $ip_location =  getIPLocation('120.29.76.74'); 
       echo $ip_location;
       die; 

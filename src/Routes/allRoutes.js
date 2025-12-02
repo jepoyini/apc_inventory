@@ -17,10 +17,13 @@ import UserProfile from "../pages/Profile/User-profile";
 
 import Warehouses from "../pages/Warehouses/Warehouses";
 import Reports from "../pages/Reports/Reports";
+import ProductSummary from "../pages/Reports/ProductSummary";
+import WarehouseByItems from "../pages/Reports/WarehouseByItems";
 import QRscan from "../pages/QRscan/QRscan";
 import Users from "../pages/Users/Users";
 import Inventory from "../pages/Inventory/Inventory";
 import ProductDetails from "../pages/Inventory/ProductDetails";
+import FormSelect from "../pages/FormSelect";
 
 import Settings from "../pages/Settings/Settings";
 
@@ -31,9 +34,12 @@ import LoginasUser from "../pages/Authentication/LoginasUser";
 
 
 const authProtectedRoutes = [
+  { path: "/formselect", component: <FormSelect  /> },   
   { path: "/settings", component: <Settings  /> },   
   { path: "/warehouses", component: <Warehouses  /> },  
   { path: "/reports", component: <Reports  /> },
+  { path: "/productsummary", component: <ProductSummary  /> },
+  { path: "/warehousebyitems", component: <WarehouseByItems  /> },
   { path: "/qrscan", component: <QRscan  /> },
   { path: "/users", component: <Users /> },  
   { path: "/inventory", component: <Inventory /> },  

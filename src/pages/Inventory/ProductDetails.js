@@ -316,36 +316,68 @@ const submitAdd = async () => {
 
 
 
-      <Row className="align-items-center mb-3">
-        <Col>
-          <div className="d-flex justify-content-between align-items-center w-100">
-            {/* Left side: Title + SKU */}
-            <div>
-              <h2 className="mb-0">{product.name}</h2>
-              {/* <div className="text-muted">SKU: {product.sku}</div> */}
-            </div>
+    <Row className="align-items-center mb-3">
+      <Col>
+        <div className="d-flex justify-content-between align-items-center w-100">
+          {/* Left side: Title + SKU */}
+          <div>
+            <h2 className="mb-0">{product.name}</h2>
 
-            {/* Right side: Actions */}
-            <div className="d-flex gap-2">
-              <Button
-                color="light"
-                size="sm"
-                onClick={() => navigate("/inventory")}
-                className="d-flex align-items-center shadow-sm"
-              >
-                <i className="ri-arrow-left-line me-1"></i>
-                Back to List
-              </Button>
-              <Button color="warning" size="sm" onClick={() => openEdit(product)}>
-                <i className="ri-pencil-line me-1" /> Edit
-              </Button>
-              <Button color="danger" size="sm" onClick={handleDelete}>
-                <i className="ri-delete-bin-line me-1" /> Delete
-              </Button>
+            {/* ▼▼▼ ADDED: Markup + Warehouse Price + Base Price (Admin Only) ▼▼▼ */}
+            <div className="text-muted small mt-1">
+
+              {product.sku && <div>SKU: {product.sku}</div>}
+
+              {/* Only show if user is Admin */}
+              {JSON.parse(sessionStorage.getItem("authUser") || "{}").role === "Admin" && (
+                <>
+                  {product.price !== undefined && (
+                    <div>
+                      <i className="ri-price-tag-3-line me-1"></i>
+                      Base Price: <strong>${Number(product.price).toFixed(2)}</strong>
+                    </div>
+                  )}
+
+                  {product.markup_percent !== undefined && (
+                    <div>
+                      <i className="ri-percent-line me-1"></i>
+                      Markup: <strong>{product.markup_percent}%</strong>
+                    </div>
+                  )}
+
+                  {product.warehouse_price !== undefined && (
+                    <div>
+                      <i className="ri-store-2-line me-1"></i>
+                      Warehouse Price:{" "}
+                      <strong className="text-success">
+                        ${Number(product.warehouse_price).toFixed(2)}
+                      </strong>
+                    </div>
+                  )}
+                </>
+              )}
+
             </div>
+            {/* ▲▲▲ END ADMIN-ONLY BLOCK ▲▲▲ */}
+
           </div>
-        </Col>
-      </Row>
+
+          {/* Right side: Actions */}
+          <div className="d-flex gap-2">
+            <Button
+              color="light"
+              size="sm"
+              onClick={() => navigate("/inventory")}
+              className="d-flex align-items-center shadow-sm"
+            >
+              <i className="ri-arrow-left-line me-1"></i>
+              Back to List
+            </Button>
+          </div>
+        </div>
+      </Col>
+    </Row>
+
 
 
 

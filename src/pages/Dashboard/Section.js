@@ -9,12 +9,15 @@ import FeatherIcon from "feather-icons-react";
 const Section = () => {
   const navigate = useNavigate();
 
+
   const [userName, setUserName] = useState("");
   const [greeting, setGreeting] = useState("");
+  const [warehouseName, setWarehouseName] = useState("");
 
-  const obj = JSON.parse(sessionStorage.getItem("authUser"));
-  const role = obj.role;
-
+  // ✅ safely parse authUser
+  const authUser = JSON.parse(sessionStorage.getItem("authUser") || "{}");
+  const role = authUser.role;
+  const isAdmin = authUser?.role === "Admin";
   useEffect(() => {
     const getGreeting = () => {
       const currentHour = new Date().getHours();
@@ -25,8 +28,18 @@ const Section = () => {
     setGreeting(getGreeting());
 
     if (sessionStorage.getItem("authUser")) {
+      debugger; 
       const obj = JSON.parse(sessionStorage.getItem("authUser"));
-      setUserName(obj.firstname + ' ' + obj.lastname);
+      setUserName((obj.firstname || "") + " " + (obj.lastname || ""));
+
+      // ✅ pick warehouse name from authUser
+      // adjust the field name if your backend uses a different one
+      setWarehouseName(
+        obj.warehouse_name ||
+        obj.warehouseName ||
+        obj.warehouse?.name ||
+        ""
+      );
     }
   }, []);
 
@@ -38,11 +51,20 @@ const Section = () => {
           <div>
             <h2 className="mb-1">Dashboard</h2>
             <p className="mb-0">
-              <span className="fs-16 fw-bold">{greeting}, {userName}</span>
+              <span className="fs-16 fw-bold">
+                {greeting}, {userName}
+              </span>
             </p>
             <p className="text-muted mb-0">
               Welcome to American Plaque Inventory Management System
             </p>
+
+            {/* ✅ Show warehouse if available */}
+            {warehouseName && (
+              <p className="text-muted mb-0">
+                Warehouse: <span className="fw-semibold">{warehouseName}</span>
+              </p>
+            )}
           </div>
         </Col>
 
@@ -57,6 +79,9 @@ const Section = () => {
             className="d-flex flex-nowrap gap-2 overflow-auto"
             style={{ whiteSpace: "nowrap" }}
           >
+
+
+            {isAdmin && (
             <Button
               color="primary"
               onClick={() => navigate("/inventory")}
@@ -64,7 +89,10 @@ const Section = () => {
             >
               <FeatherIcon icon="package" className="me-2" size={16} />
               Add Product
-            </Button>
+            </Button>        
+            )}
+
+
 
             <Button
               color="success"
@@ -86,6 +114,7 @@ const Section = () => {
                 Warehouses
               </Button>
             )}
+
             <Button
               color="warning"
               onClick={() => navigate("/reports")}

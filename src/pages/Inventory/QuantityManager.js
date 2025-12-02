@@ -748,14 +748,6 @@ const QuantityManager = ({ productId, productname, readonly = false }) => {
     <h6 className="fw-bold">Statuses Legend:</h6>
     <ul className="list-unstyled mb-0">
       <li>
-        <Badge
-          className="created-status mw-70  me-2"
-        >
-           CREATED
-        </Badge>
-        Product created/defined
-      </li>
-      <li>
         <Badge color="success" className=" mw-70 me-2">AVAILABLE</Badge>
         Items entered in system, ready at origin
       </li>
@@ -764,7 +756,7 @@ const QuantityManager = ({ productId, productname, readonly = false }) => {
         On the way to another warehouse
       </li>
       <li>
-        <Badge className="mw-70 checkin-status me-2">CHECK-IN</Badge>
+        <Badge className="mw-70 checkin-status me-2">ARRIVED</Badge>
         Received but still under verification/audit.
       </li>         
       <li>
@@ -781,7 +773,7 @@ const QuantityManager = ({ productId, productname, readonly = false }) => {
         If Customer sends it back
       </li>  
       <li>
-        <Badge color="danger" className="mw-70 me-2">DISPOSED</Badge>
+        <Badge color="danger" className="mw-70 me-2">DAMAGED</Badge>
         Scrapped/destroyed
       </li>
     </ul>

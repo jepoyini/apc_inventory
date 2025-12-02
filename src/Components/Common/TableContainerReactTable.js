@@ -66,9 +66,18 @@ const TableContainer = ({
 
   const { getHeaderGroups, getRowModel } = table;
 
+  // ✅ Always sync parent pageSize into TanStack table
   useEffect(() => {
-    if (customPageSize) table.setPageSize(customPageSize);
-  }, [customPageSize, table]);
+    if (customPageSize) {
+      table.setPageSize(customPageSize);
+    } else if (pageSize) {
+      if (pageSize === "all") {
+        table.setPageSize(totalRecords || 100000); // large number as fallback
+      } else {
+        table.setPageSize(pageSize);
+      }
+    }
+  }, [customPageSize, pageSize, table, totalRecords]);
 
 const getVisiblePages = (currentPage, totalPages, maxVisible = 7) => {
   const pages = [];
@@ -124,18 +133,22 @@ const getVisiblePages = (currentPage, totalPages, maxVisible = 7) => {
 
         {/* Showing */}
         <div className="col-sm d-flex align-items-center gap-3">
-          <Input
-            type="select"
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(parseInt(e.target.value, 10))}
-            style={{ width: "auto", minWidth: "120px" }}
-            className="form-select"
-          >
-            <option value={10}>10 rows</option>
-            <option value={20}>20 rows</option>
-            <option value={50}>50 rows</option>
-            <option value={100}>100 rows</option>
-          </Input>
+        <Input
+          type="select"
+          value={pageSize === totalRecords ? "all" : pageSize}
+          onChange={(e) => {
+            const val = e.target.value;
+            onPageSizeChange(val === "all" ? "all" : parseInt(val, 10));
+          }}
+          style={{ width: "auto", minWidth: "120px" }}
+          className="form-select"
+        >
+          <option value={10}>10 rows</option>
+          <option value={20}>20 rows</option>
+          <option value={50}>50 rows</option>
+          <option value={100}>100 rows</option>
+          <option value="all">All</option> {/* ✅ New */}
+        </Input>
 
           <div className="text-muted">
             Showing{" "}
@@ -251,18 +264,22 @@ const getVisiblePages = (currentPage, totalPages, maxVisible = 7) => {
 
         {/* Showing */}
         <div className="col-sm d-flex align-items-center gap-3">
-          <Input
-            type="select"
-            value={pageSize}
-            onChange={(e) => onPageSizeChange(parseInt(e.target.value, 10))}
-            style={{ width: "auto", minWidth: "120px" }}
-            className="form-select"
-          >
-            <option value={10}>10 rows</option>
-            <option value={20}>20 rows</option>
-            <option value={50}>50 rows</option>
-            <option value={100}>100 rows</option>
-          </Input>
+        <Input
+          type="select"
+          value={pageSize === totalRecords ? "all" : pageSize}
+          onChange={(e) => {
+            const val = e.target.value;
+            onPageSizeChange(val === "all" ? "all" : parseInt(val, 10));
+          }}
+          style={{ width: "auto", minWidth: "120px" }}
+          className="form-select"
+        >
+          <option value={10}>10 rows</option>
+          <option value={20}>20 rows</option>
+          <option value={50}>50 rows</option>
+          <option value={100}>100 rows</option>
+          <option value="all">All</option> {/* ✅ New */}
+        </Input>
 
           <div className="text-muted">
             Showing{" "}

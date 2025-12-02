@@ -223,7 +223,7 @@ const Layout = (props) => {
                     headerClass={headerClass}
                     layoutModeType={layoutModeType}
                     onChangeLayoutMode={onChangeLayoutMode} />
-                    toggleAnnouncementModal={toggleAnnouncementModal}                    
+                    {/* toggleAnnouncementModal={toggleAnnouncementModal}                     */}
                 <Sidebar
                     layoutType={layoutType}
                 />
@@ -234,7 +234,7 @@ const Layout = (props) => {
 
             {AnnouncementContent !== '' && (
 
-<Modal isOpen={AnnouncementModal} toggle={toggleAnnouncementModal} centered size='lg'>
+{/* <Modal isOpen={AnnouncementModal} toggle={toggleAnnouncementModal} centered size='lg'>
     <div className="modal-header" style={{ position: 'relative' }}>
         <Button
             color="link"
@@ -323,7 +323,7 @@ const Layout = (props) => {
             </Col>
         </Row>
     )}
-</Modal>
+</Modal> */}
 
 
 

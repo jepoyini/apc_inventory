@@ -49,6 +49,20 @@ const ProductOverview = ({ product, onDelete, specs }) => {
     );
   }
 
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case "CREATED": return <Badge className="created-status mw-70">CREATED</Badge>;
+      case "AVAILABLE": return <Badge color="success" className="mw-70">AVAILABLE</Badge>;
+      case "IN_TRANSIT": return <Badge color="info" className="mw-70">IN-TRANSIT</Badge>;
+      case "IN_STOCK": return <Badge color="primary" className="mw-70">IN-STOCK</Badge>;
+      case "SOLD": return <Badge color="dark" className="mw-70">SOLD</Badge>;
+      case "DISPOSED": return <Badge color="danger" className="mw-70">DISPOSED</Badge>;
+      case "RETURNED": return <Badge className="returned-status mw-70">RETURNED</Badge>;
+      case "CHECK_IN": return <Badge className="returned-status mw-70">CHECK-IN</Badge>;
+      default: return <Badge color="secondary" className="mw-70">{status}</Badge>;
+    }
+  };
+
   const handleEdit = () => {
     setForm(product);      // ✅ preload current product
     setOpenEdit(true);     // ✅ open modal
@@ -56,7 +70,6 @@ const ProductOverview = ({ product, onDelete, specs }) => {
 
   const handleUpdate = () => {
     console.log("Updated product:", form);
-    // 🔥 here you would call API to save updates
     setOpenEdit(false);
   };
 
@@ -76,52 +89,39 @@ const ProductOverview = ({ product, onDelete, specs }) => {
       <Row className="g-4">
         {/* LEFT SIDE – Image & Stock */}
         <Col xl={4} lg={5}>
-          {/* Product Image */}
+          {/* Product Image + Description */}
           <Card className="shadow-sm border-0">
             <CardBody className="p-0">
-              <img
-                src={prefixUrl(product.primary_image)}
-                alt={product.name}
-                className="img-fluid rounded-top"
+              <div
                 style={{
-                  width: "100%",
-                  height: "350px",
-                  objectFit: "cover",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "6px",
+                  padding: "4px",
+                  textAlign: "center",
+                  background: "#fff",
                 }}
-              />
-            </CardBody>
-          </Card>
+              >
+                <img
+                  src={prefixUrl(product.primary_image)}
+                  alt={product.name}
+                  className="img-fluid"
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "350px",
+                    objectFit: "contain",
+                  }}
+                />
+              </div>
 
-          {/* Stock Summary */}
-          <Card className="mt-3 shadow-sm border-0">
-            <CardBody>
-              <h5 className="mb-3">Stock Summary</h5>
-              <Row className="g-3 text-center">
-                <Col sm={6}>
-                  <div className="p-3 bg-light border rounded shadow-sm">
-                    <h4 className="text-primary">{product.total_qty || 0}</h4>
-                    <p className="mb-0">Total</p>
-                  </div>
-                </Col>
-                <Col sm={6}>
-                  <div className="p-3 bg-light border rounded shadow-sm">
-                    <h4 className="text-success">{product.available_qty || 0}</h4>
-                    <p className="mb-0">Available</p>
-                  </div>
-                </Col>
-                <Col sm={6}>
-                  <div className="p-3 bg-light border rounded shadow-sm">
-                    <h4 className="text-warning">{product.in_transit_qty || 0}</h4>
-                    <p className="mb-0">In-Transit</p>
-                  </div>
-                </Col>
-                <Col sm={6}>
-                  <div className="p-3 bg-light border rounded shadow-sm">
-                    <h4 className="text-danger">{product.sold_qty || 0}</h4>
-                    <p className="mb-0">Sold</p>
-                  </div>
-                </Col>
-              </Row>
+              {/* ✅ Description under image */}
+              {product.description && (
+                <div className="mt-3 px-2">
+                  <h6 className="fw-semibold">Description</h6>
+                  <p className="text-muted small mb-0">
+                    {product.description}
+                  </p>
+                </div>
+              )}
             </CardBody>
           </Card>
         </Col>
@@ -132,31 +132,99 @@ const ProductOverview = ({ product, onDelete, specs }) => {
             {/* Product Info with Actions */}
             <Col md={12}>
               <Card className="shadow-sm border-0">
-                <CardHeader className="d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">Product Information</h5>
-                </CardHeader>
+
+
+<CardHeader className="d-flex justify-content-between align-items-center">
+
+  {/* LEFT: Title */}
+  <h5 className="mb-0">Product Information</h5>
+
+  {/* RIGHT: Buttons (Admin Only) */}
+  {JSON.parse(sessionStorage.getItem("authUser") || "{}").role === "Admin" && (
+    <div className="d-flex gap-2">
+      <Button color="primary" size="sm" onClick={handleEdit}>
+        <i className="ri-pencil-line me-1" /> Edit
+      </Button>
+
+      <Button color="danger" size="sm" onClick={onDelete}>
+        <i className="ri-delete-bin-line me-1" /> Delete
+      </Button>
+    </div>
+  )}
+
+</CardHeader>
+
+
                 <CardBody>
+
                   <Row>
                     <Col sm={6}>
-                      <p><strong>Model:</strong> {product.model}</p>
-                      <p><strong>Brand:</strong> {product.brand}</p>
-                      <p>
-                        <strong>Price:</strong>{" "}
-                        <span className="text-success fw-bold">
-                          {Number(product.price || 0).toFixed(2)}
-                        </span>
-                      </p>
+                      <p><strong>Category:</strong>&nbsp;&nbsp; {product.category}</p>
+                      <p><strong>Material:</strong>&nbsp;&nbsp; {product.material}</p>
+                      <p><strong>Size:</strong>&nbsp;&nbsp; {product.size}</p>
                     </Col>
+
                     <Col sm={6}>
-                      <p><strong>Category:</strong> {product.category}</p>
-                      <p><strong>Reorder Point:</strong> {product.reorder_point || 0}</p>
-                      <p><strong>Max Stock:</strong> {product.max_stock || 0}</p>
+                      {/* <p><strong>Status:</strong>&nbsp;&nbsp; {getStatusBadge(product.last_status)}</p> */}
+                      <p><strong>Quantity:</strong>&nbsp;&nbsp; {product.qty || 0}</p>
+                      <p><strong>Warehouse:</strong>&nbsp;&nbsp; {product.warehouse_name}</p>
+                      {(() => {
+                        const role = JSON.parse(sessionStorage.getItem("authUser") || "{}").role;
+
+                        // ================================
+                        // ADMIN – show all price fields
+                        // ================================
+                        if (role === "Admin") {
+                          return (
+                            <>
+                              {/* Base Price */}
+                              <p>
+                                <strong>Base Price:</strong>&nbsp;&nbsp;
+                                <span className="text-success fw-bold">
+                                  {Number(product.price || 0).toFixed(2)}
+                                </span>
+                              </p>
+
+                              {/* Markup % */}
+                              {product.markup_percent !== undefined && product.markup_percent !== null && (
+                                <p>
+                                  <strong>Markup %:</strong>&nbsp;&nbsp;
+                                  {Number(product.markup_percent).toFixed(2)}%
+                                </p>
+                              )}
+
+                              {/* Warehouse Price */}
+                              {product.warehouse_price !== undefined && product.warehouse_price !== null && (
+                                <p>
+                                  <strong>Warehouse Price:</strong>&nbsp;&nbsp;
+                                  <span className="fw-bold text-primary">
+                                    {Number(product.warehouse_price || 0).toFixed(2)}
+                                  </span>
+                                </p>
+                              )}
+                            </>
+                          );
+                        }
+
+                        // ================================
+                        // MANAGER / STAFF – warehouse price only
+                        // ================================
+                        return (
+                          <>
+                            {product.warehouse_price !== undefined && (
+                              <p>
+                                <strong>Warehouse Price:</strong>&nbsp;&nbsp;
+                                <span className="fw-bold text-primary">
+                                  {Number(product.warehouse_price || 0).toFixed(2)}
+                                </span>
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
+                     
                     </Col>
                   </Row>
-
-                  {product.description && (
-                    <p className="mt-3 text-muted">{product.description}</p>
-                  )}
 
                   {product.tags?.length > 0 && (
                     <div className="mt-2">
@@ -175,58 +243,38 @@ const ProductOverview = ({ product, onDelete, specs }) => {
               </Card>
             </Col>
 
-            {/* Specs */}
+            {/* Specs + Stock Summary */}
             <Col md={12}>
-              <Card className="shadow-sm border-0">
+              {/* Stock Summary */}
+              <Card className="mt-3 shadow-sm border-0">
                 <CardBody>
-                  <h5 className="mb-3">Specifications</h5>
-                  <Accordion open={open} toggle={toggle}>
-                    <AccordionItem>
-                      <AccordionHeader targetId="1">Dimensions</AccordionHeader>
-                      <AccordionBody accordionId="1">
-                        <Row>
-                          <Col xs={6}><strong>Length:</strong></Col>
-                          <Col xs={6}>{product.length || "—"}</Col>
-                          <Col xs={6}><strong>Width:</strong></Col>
-                          <Col xs={6}>{product.width || "—"}</Col>
-                          <Col xs={6}><strong>Height:</strong></Col>
-                          <Col xs={6}>{product.height || "—"}</Col>
-                          <Col xs={6}><strong>Weight:</strong></Col>
-                          <Col xs={6}>{product.weight || "—"}</Col>
-                        </Row>
-                      </AccordionBody>
-                    </AccordionItem>
-
-                    <AccordionItem>
-                      <AccordionHeader targetId="2">Technical Specs</AccordionHeader>
-                      <AccordionBody accordionId="2">
-                        <Row>
-                          <Col xs={6}><strong>Material:</strong></Col>
-                          <Col xs={6}>{product.material || "—"}</Col>
-                          <Col xs={6}><strong>Base:</strong></Col>
-                          <Col xs={6}>{product.base || "—"}</Col>
-                          <Col xs={6}><strong>Engraving:</strong></Col>
-                          <Col xs={6}>{product.engraving || "—"}</Col>
-                          <Col xs={6}><strong>Packaging:</strong></Col>
-                          <Col xs={6}>{product.packaging || "—"}</Col>
-                        </Row>
-                      </AccordionBody>
-                    </AccordionItem>
-
-                    <AccordionItem>
-                      <AccordionHeader targetId="3">Additional Info</AccordionHeader>
-                      <AccordionBody accordionId="3">
-                        <Row>
-                          <Col xs={6}><strong>Supplier:</strong></Col>
-                          <Col xs={6}>{product.supplier || "—"}</Col>
-                          <Col xs={6}><strong>Manufactured:</strong></Col>
-                          <Col xs={6}>{product.manufactured || "—"}</Col>
-                          <Col xs={6}><strong>Warranty:</strong></Col>
-                          <Col xs={6}>{product.warranty || "—"}</Col>
-                        </Row>
-                      </AccordionBody>
-                    </AccordionItem>
-                  </Accordion>
+                  <h5 className="mb-3">Stock Summary</h5>
+                  <Row className="g-3 text-center">
+                    <Col sm={6}>
+                      <div className="p-3 bg-light border rounded shadow-sm">
+                        <h4 className="text-primary">{product.total_qty || 0}</h4>
+                        <p className="mb-0">Total</p>
+                      </div>
+                    </Col>
+                    <Col sm={6}>
+                      <div className="p-3 bg-light border rounded shadow-sm">
+                        <h4 className="text-success">{product.available_qty || 0}</h4>
+                        <p className="mb-0">Available</p>
+                      </div>
+                    </Col>
+                    <Col sm={6}>
+                      <div className="p-3 bg-light border rounded shadow-sm">
+                        <h4 className="text-warning">{product.in_transit_qty || 0}</h4>
+                        <p className="mb-0">In-Transit</p>
+                      </div>
+                    </Col>
+                    <Col sm={6}>
+                      <div className="p-3 bg-light border rounded shadow-sm">
+                        <h4 className="text-danger">{product.sold_qty || 0}</h4>
+                        <p className="mb-0">Sold</p>
+                      </div>
+                    </Col>
+                  </Row>
                 </CardBody>
               </Card>
             </Col>

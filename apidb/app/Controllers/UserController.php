@@ -48,9 +48,78 @@ class UserController extends ResourceController
         ]);
     }
 
-
     // GET all users + summary
     public function list()
+    {
+        global $conn;
+
+        // ✅ read JSON or POST
+        $postData = json_decode(file_get_contents("php://input"), true);
+        $search   = $postData['search'] ?? '';
+        $role     = $postData['role'] ?? '';
+        $status   = $postData['status'] ?? '';
+
+        try {
+            $sql = "
+                SELECT 
+                    u.*,
+                    r.name AS role_name, 
+                    r.permissions AS role_permissions,
+                    w.name AS warehouse_name       -- ✅ warehouse label
+                FROM users u
+                LEFT JOIN roles r ON r.id = u.role_id
+                LEFT JOIN warehouses w ON w.id = u.warehouse_id  -- ✅ join warehouses
+                WHERE (? = '' OR u.username LIKE ? OR u.firstname LIKE ? OR u.lastname LIKE ? OR u.email LIKE ?)
+                  AND (? = '' OR r.name = ?)
+                  AND (? = '' OR u.status = ?)
+                  AND (u.status <> 'deleted') 
+                ORDER BY u.id DESC
+            ";
+
+            $stmt = $conn->prepare($sql);
+            $likeSearch = "%$search%";
+            $stmt->bind_param(
+                "sssssssss",
+                $search, $likeSearch, $likeSearch, $likeSearch, $likeSearch,
+                $role, $role,
+                $status, $status
+            );
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $users = $result->fetch_all(MYSQLI_ASSOC);
+
+            foreach ($users as &$u) {
+                $u['permissions'] = $u['role_permissions']
+                    ? json_decode($u['role_permissions'], true)
+                    : [];
+                unset($u['role_permissions']);
+            }
+
+            // Summary
+            $summarySql = "
+                SELECT 
+                  (SELECT COUNT(*) FROM users) AS total,
+                  (SELECT COUNT(*) FROM users WHERE status = 'active') AS active,
+                  (SELECT COUNT(*) FROM roles) AS roles,
+                  (SELECT COUNT(*) FROM users WHERE status = 'locked') AS locked
+            ";
+            $summary = $conn->query($summarySql)->fetch_assoc();
+
+            return $this->response->setJSON([
+                'users'   => $users,
+                'sql'     => $sql,
+                'summary' => $summary
+            ]);
+        } catch (\Throwable $e) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    // GET all users + summary
+    public function list1()
     {
         global $conn;
 
@@ -120,7 +189,13 @@ class UserController extends ResourceController
     {
         global $conn;
         $postData = json_decode(file_get_contents("php://input"), true);
-        $id = $postData['id'] ?? null;
+
+        // fallback for form-data / urlencoded
+        if (!$postData) {
+            $postData = $_POST;
+        }
+
+        $id = $postData['uid'] ?? null;
 
         if (!$id) {
             return $this->response->setJSON(['status' => 'error','message' => 'Missing user ID']);
@@ -128,7 +203,27 @@ class UserController extends ResourceController
 
         try {
             $sql = "
-                SELECT u.*, r.name AS role_name, r.permissions AS role_permissions
+                SELECT 
+                u.id,
+                u.firstname, 
+                u.lastname, 
+                u.middlename, 
+                u.role_id, 
+                u.email ,
+                u.phone ,
+                u.address ,
+                u.city ,
+                u.state ,
+                u.zip ,
+                u.country ,
+                u.status ,
+                u.is_admin ,
+                u.avatar,
+                u.logged_ip,
+                u.logged_time,
+                u.logged_location,
+                r.name AS role_name, 
+                r.permissions AS role_permissions
                 FROM users u
                 LEFT JOIN roles r ON r.id = u.role_id
                 WHERE u.id = ?
@@ -167,12 +262,13 @@ class UserController extends ResourceController
         $address   = $_POST['address'] ?? "";
         $city      = $_POST['city'] ?? "";
         $country   = $_POST['country'] ?? "";
-        $zip   = $_POST['zip'] ?? "";
+        $zip       = $_POST['zip'] ?? "";
         $password  = $_POST['password'] ?? "";
         $role_id   = $_POST['role_id'] ?? null;
         $status    = $_POST['status'] ?? "active";
+        $warehouse_id    = $_POST['warehouse_id'] ?? null;
 
-        // Check unique username
+        // ✅ Check unique username
         $checkSql = "SELECT id FROM users WHERE username=? AND id!=?";
         $stmt = $conn->prepare($checkSql);
         $stmt->bind_param("si", $username, $id);
@@ -185,6 +281,7 @@ class UserController extends ResourceController
             ]);
         }
 
+        // ✅ Handle avatar upload
         $avatarPath = null;
         if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
             $newName = uniqid() . "_" . basename($_FILES['avatar']['name']);
@@ -197,13 +294,38 @@ class UserController extends ResourceController
         }
 
         try {
+
+
             if ($id) {
-                // UPDATE
+                // ✅ UPDATE
                 $sql = "UPDATE users 
-                        SET username=?,firstname=?, lastname=?, phone=?, email=?, address=?, city=?, country=?, zip=?, 
-                            role_id=?, status=?, updated_at=NOW()";
-                $params = [$username, $firstname, $lastname, $phone, $email, $address, $city, $country, $zip, $role_id, $status];
-                $types = "sssssssssss";
+                        SET firstname=?,
+                            lastname=?,
+                            phone=?,
+                            email=?,
+                            address=?,
+                            city=?,
+                            country=?,
+                            zip=?,
+                            role_id=?,
+                            status=?,
+                            warehouse_id=?,
+                            updated_at=NOW()";
+
+                $params = [
+                    $firstname,
+                    $lastname,
+                    $phone,
+                    $email,
+                    $address,
+                    $city,
+                    $country,
+                    $zip,
+                    $role_id,
+                    $status,
+                    $warehouse_id
+                ];
+                $types  = "ssssssssisi";  // 8 strings + 1 int + 1 string + 1 int
 
                 if ($avatarPath) {
                     $sql .= ", avatar=?";
@@ -224,15 +346,19 @@ class UserController extends ResourceController
                 $stmt = $conn->prepare($sql);
                 $stmt->bind_param($types, ...$params);
                 $stmt->execute();
+
             } else {
-                // INSERT
+
+                // ✅ INSERT
                 $sql = "INSERT INTO users 
-                        (username, firstname, lastname, phone, email, address, city, country, zip, password, avatar, role_id, status) 
-                        VALUES (?.?,?,?,?,?,?,?,?,?,?,?,?)";
+                        (username, firstname, lastname, phone, email, address, city, country, zip, password, avatar, role_id, status,warehouse_id) 
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+
                 $stmt = $conn->prepare($sql);
                 $hashedPass = password_hash($password, PASSWORD_BCRYPT);
+
                 $stmt->bind_param(
-                    "sssssssssssss",
+                    "sssssssssssisi",
                     $username,
                     $firstname,
                     $lastname,
@@ -245,7 +371,8 @@ class UserController extends ResourceController
                     $hashedPass,
                     $avatarPath,
                     $role_id,
-                    $status
+                    $status,
+                    $warehouse_id
                 );
                 $stmt->execute();
             }
@@ -259,6 +386,7 @@ class UserController extends ResourceController
             ]);
         }
     }
+
 
     // DELETE user (soft delete)
     public function delete($id = null)
@@ -294,6 +422,10 @@ class UserController extends ResourceController
     {
         global $conn;
         $postData = json_decode(file_get_contents("php://input"), true);
+        // fallback for form-data / urlencoded
+        if (!$postData) {
+            $postData = $_POST;
+        }        
         $id          = $postData['id'] ?? null;
         $oldPassword = $postData['oldPassword'] ?? "";
         $newPassword = $postData['newPassword'] ?? "";
@@ -2633,13 +2765,13 @@ if ($rank === 'admin') {
     $logisticsFilter = "";
 } elseif (strpos($rank, 'humanitarian_') === 0) {
     // starts with 'humanitarian_' → show all except 61
-    $logisticsFilter = " AND NOT (c.category_name = 'LOGISTICS' AND s.id = 61)";
+    $logisticsFilter = " AND NOT (c.category_name = 'LOGISTICS' AND s.id = 61 OR s.id = 72)";
 } elseif ($rank === 'ambassador') {
     // exactly 'ambassador' → 58 + 48 + 63
-    $logisticsFilter = " AND (c.category_name <> 'LOGISTICS' OR s.id IN (58,48,63))";
+    $logisticsFilter = " AND (c.category_name <> 'LOGISTICS' OR s.id IN (58,48,63,72))";
 } elseif (strpos($rank, 'ambassador_') === 0) {
     // starts with 'ambassador_' → only 48 + 63
-    $logisticsFilter = " AND (c.category_name <> 'LOGISTICS' OR s.id IN (48,63))";
+    $logisticsFilter = " AND (c.category_name <> 'LOGISTICS' OR s.id IN (48,63)) AND s.id <> 72";
 }
 
 

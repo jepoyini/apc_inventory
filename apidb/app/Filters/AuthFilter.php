@@ -51,7 +51,7 @@ class AuthFilter implements FilterInterface
                 //'authheader'=>$token_header
                  ])->setStatusCode(401);
         }
-
+        session()->set('uid', $userid);
  
 
         // ✅ Allow API requests, but still protect CSRF for non-API routes

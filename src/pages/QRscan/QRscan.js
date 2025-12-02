@@ -281,18 +281,42 @@ const QRScanner = () => {
                       <CardBody>
                         <ul className="list-unstyled mb-0 small">
                           {/* <li><Badge className="created-status mw-70 me-2">CREATED</Badge> Product created/defined</li> */}
-                          <li><Badge color="success" className="mw-70 me-2">AVAILABLE</Badge> Items entered, ready at origin</li>
-                          <li><Badge color="info" className="mw-70 me-2">IN-TRANSIT</Badge> On the way to warehouse</li>
-                          <li><Badge className="mw-70 checkin-status me-2">CHECK-IN</Badge> Under verification/audit</li>
-                          <li><Badge color="primary" className="mw-70 me-2">IN-STOCK</Badge> Officially received at warehouse</li>
-                          <li><Badge color="dark" className="mw-70 me-2">SOLD</Badge> Sold/fulfilled order</li>
-                          <li><Badge className="returned-status mw-70 me-2">RETURNED</Badge> Customer returned</li>
-                          <li><Badge color="danger" className="mw-70 me-2">DISPOSED</Badge> Scrapped/destroyed</li>
+                            < li>
+                              <Badge color="success" className=" mw-70 me-2">AVAILABLE</Badge>
+                              Items entered in system, ready at origin
+                            </li>
+                            <li>
+                              <Badge color="info" className="mw-70 me-2">IN-TRANSIT</Badge>
+                              On the way to another warehouse
+                            </li>
+                            <li>
+                              <Badge className="mw-70 checkin-status me-2">ARRIVED</Badge>
+                              Received but still under verification/audit.
+                            </li>         
+                            <li>
+                              <Badge color="primary" className=" mw-70 me-2">IN-STOCK</Badge>
+                              Officially received at warehouse
+                            </li>
+                            <li>
+                              <Badge color="dark" className="mw-70 me-2">SOLD</Badge>
+                              Sold/fulfilled order
+                            </li>
+                      
+                          <li>
+                              <Badge  className="returned-status mw-70 me-2">RETURNED</Badge>
+                              If Customer sends it back
+                            </li>  
+                            <li>
+                              <Badge color="danger" className="mw-70 me-2">DAMAGED</Badge>
+                              Scrapped/destroyed
+                            </li>
                         </ul>
                       </CardBody>
                     </Card>
                   </Col>
                 </Row>
+
+
 
 
 

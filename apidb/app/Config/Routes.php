@@ -83,7 +83,12 @@ $routes->post('/getstats', 'AdminController::getStats', ['filter' => 'auth']);
 $routes->group('products', ['namespace' => 'App\Controllers'], function($routes) {
     // main listing
     $routes->post('/', 'ProductController::index');
+
+    $routes->post('productsummary', 'ProductController::productsummary');
+    $routes->post('warehouseitems', 'ProductController::WarehouseItems');
+
     
+
     // create/update/delete
     $routes->post('create', 'ProductController::create');
     $routes->post('(:num)/update', 'ProductController::update/$1');
@@ -119,7 +124,13 @@ $routes->group('products', ['namespace' => 'App\Controllers'], function($routes)
     $routes->post('(:num)/images/update', 'ProductController::updateImage/$1');
     $routes->post('(:num)/images/delete', 'ProductController::deleteImage/$1');
 
-    $routes->post('recent', 'ProductController::recent');           
+    $routes->post('recent', 'ProductController::recent');     
+
+    $routes->post('categories', 'ProductController::categories');      
+    $routes->post('categories/create', 'ProductController::categories_create');      
+
+    $routes->post('sizes', 'ProductController::sizes');      
+    $routes->post('sizes/create', 'ProductController::sizes_create');      
 
 });
 

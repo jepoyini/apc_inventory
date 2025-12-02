@@ -12,26 +12,26 @@ import { api } from "../../config";
 
 // Simple country list (you can expand/replace with full ISO list if needed)
 const countries = [
-        "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
-        "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
-        "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
-        "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica",
-        "Croatia", "Cuba", "Cyprus", "Czechia", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador",
-        "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini (Swaziland)", "Ethiopia", "Fiji", "Finland", "France",
-        "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau",
-        "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland",
-        "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan",
-        "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar",
-        "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia",
-        "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar (Burma)", "Namibia", "Nauru", "Nepal",
-        "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan",
-        "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar",
-        "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia",
-        "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa",
-        "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
-        "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
-        "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
-        "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
+  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
+  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile", "China", "Colombia", "Comoros", "Congo (Congo-Brazzaville)", "Costa Rica",
+  "Croatia", "Cuba", "Cyprus", "Czechia", "Democratic Republic of the Congo", "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador",
+  "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Eswatini (Swaziland)", "Ethiopia", "Fiji", "Finland", "France",
+  "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau",
+  "Guyana", "Haiti", "Honduras", "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland",
+  "Israel", "Italy", "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan",
+  "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar",
+  "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia",
+  "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar (Burma)", "Namibia", "Nauru", "Nepal",
+  "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan",
+  "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal", "Qatar",
+  "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia",
+  "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa",
+  "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
+  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
+  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
+  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe"
 ];
 
 const AddUserDialog = ({ open, onClose, editingUser = null }) => {
@@ -51,11 +51,13 @@ const AddUserDialog = ({ open, onClose, editingUser = null }) => {
     password: "",
     confirmPassword: "",
     role_id: "",
+    warehouse_id: "",   // ✅ NEW
     status: "active",
     avatar: null,
   });
 
   const [roles, setRoles] = useState([]);
+  const [warehouses, setWarehouses] = useState([]); // ✅ NEW
 
   // Load roles from backend
   const loadRoles = async () => {
@@ -67,9 +69,21 @@ const AddUserDialog = ({ open, onClose, editingUser = null }) => {
     }
   };
 
+  // ✅ Load warehouses from backend
+  const loadWarehouses = async () => {
+    try {
+      const r = await apipost.post("/warehouses/list", {});
+      setWarehouses(r?.warehouses || []);
+    } catch {
+      toast.error("Failed to load warehouses");
+    }
+  };
+
   useEffect(() => {
     if (open) {
       loadRoles();
+      loadWarehouses(); // ✅ also load warehouses
+
       if (editingUser) {
         setForm({
           id: editingUser.id,
@@ -85,12 +99,14 @@ const AddUserDialog = ({ open, onClose, editingUser = null }) => {
           password: "",
           confirmPassword: "",
           role_id: editingUser.role_id || "",
+          warehouse_id: editingUser.warehouse_id || "", // ✅ fill from user
           status: editingUser.status || "active",
           avatar: null,
         });
       } else {
         setForm({
           id: null,
+          username: "",
           firstname: "",
           lastname: "",
           phone: "",
@@ -102,6 +118,7 @@ const AddUserDialog = ({ open, onClose, editingUser = null }) => {
           password: "",
           confirmPassword: "",
           role_id: "",
+          warehouse_id: "", // ✅ reset
           status: "active",
           avatar: null,
         });
@@ -124,13 +141,14 @@ const AddUserDialog = ({ open, onClose, editingUser = null }) => {
     }
 
     try {
+      debugger;
       const fd = new FormData();
       Object.keys(form).forEach((k) => {
         if (form[k] !== null && form[k] !== "") {
           fd.append(k, form[k]);
         }
       });
-
+ 
       await apipost.post("/users/save", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -183,6 +201,25 @@ const AddUserDialog = ({ open, onClose, editingUser = null }) => {
                 placeholder="Unique username"
                 disabled={!!form.id} // ✅ disable if editing
               />
+            </FormGroup>
+          </Col>
+
+          {/* ✅ Warehouse Dropdown (after Username) */}
+          <Col md={4}>
+            <FormGroup>
+              <Label>Warehouse</Label>
+              <Input
+                type="select"
+                value={form.warehouse_id || ""}
+                onChange={(e) => handleChange("warehouse_id", e.target.value)}
+              >
+                <option value="">-- Select Warehouse --</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name || w.warehouse_name || `Warehouse #${w.id}`}
+                  </option>
+                ))}
+              </Input>
             </FormGroup>
           </Col>
 

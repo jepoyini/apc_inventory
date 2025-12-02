@@ -1,7 +1,7 @@
 // ================================================================
 // FILE: src/pages/Inventory/AddProductDialog.jsx
 // ================================================================
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Button,
   Modal,
@@ -19,28 +19,159 @@ import {
   Row,
   Col
 } from "reactstrap";
+import Select from "react-select";
 import classnames from "classnames";
 import { toast, ToastContainer } from "react-toastify";
 import { APIClient } from "../../helpers/api_helper";
-import { api } from "../../config";
 
-
-const AddProductDialog = ({ open, onClose,  form, setForm, isEditing, editingId  }) => {
-
+const AddProductDialog = ({ open, onClose, form, setForm, isEditing, editingId }) => {
   const apipost = new APIClient();
-
   const [activeTab, setActiveTab] = useState("1");
-  const toggleTab = (tab) => {
-    if (activeTab !== tab) setActiveTab(tab);
+  const toggleTab = (tab) => { if (activeTab !== tab) setActiveTab(tab); };
+
+  // --------------------------
+  // CATEGORY
+  // --------------------------
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [inputCategoryValue, setInputCategoryValue] = useState("");
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const data = await apipost.post("/products/categories");
+        const mapped = data.map((c) => ({ value: c.name, label: c.name }));
+        setCategories(mapped);
+        if (form.category) {
+          setSelectedCategory({ value: form.category, label: form.category });
+        }
+      } catch (e) { console.error("Failed to load categories", e); }
+    };
+    fetchCategories();
+  }, [form.category]);
+
+  const handleCategoryChange = async (selected) => {
+    if (selected) {
+      setSelectedCategory(selected);
+      handleChange("category", selected.value);
+
+      const exists = categories.some((c) => c.value.toLowerCase() === selected.value.toLowerCase());
+      if (!exists) {
+        try {
+          await apipost.post("/products/categories/create", { name: selected.value });
+          const data = await apipost.post("/products/categories");
+          setCategories(data.map((c) => ({ value: c.name, label: c.name })));
+        } catch (err) { console.error("Failed to save new category", err); }
+      }
+    } else {
+      setSelectedCategory(null);
+      handleChange("category", "");
+    }
   };
 
+  const handleCategoryKeyDown = async (event) => {
+    if (event.key === "Enter" && inputCategoryValue) {
+      event.preventDefault();
+      const exists = categories.some((c) => c.value.toLowerCase() === inputCategoryValue.toLowerCase());
+      if (!exists) {
+        try {
+          await apipost.post("/products/categories/create", { name: inputCategoryValue });
+          const newCategory = { value: inputCategoryValue, label: inputCategoryValue };
+          setCategories((prev) => [...prev, newCategory]);
+          setSelectedCategory(newCategory);
+          handleChange("category", inputCategoryValue);
+          setInputCategoryValue("");
+        } catch (err) { console.error("Failed to save new category", err); }
+      }
+    }
+  };
+
+  // --------------------------
+  // SIZE
+  // --------------------------
+  const [sizes, setSizes] = useState([]);
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [inputSizeValue, setInputSizeValue] = useState("");
+
+  useEffect(() => {
+    const fetchSizes = async () => {
+      try {
+        const data = await apipost.post("/products/sizes");
+        const mapped = data.map((s) => ({ value: s.name, label: s.name }));
+        setSizes(mapped);
+        if (form.size) {
+          setSelectedSize({ value: form.size, label: form.size });
+        }
+      } catch (e) { console.error("Failed to load sizes", e); }
+    };
+    fetchSizes();
+  }, [form.size]);
+
+  const handleSizeChange = async (selected) => {
+    if (selected) {
+      setSelectedSize(selected);
+      handleChange("size", selected.value);
+
+      const exists = sizes.some((s) => s.value.toLowerCase() === selected.value.toLowerCase());
+      if (!exists) {
+        try {
+          await apipost.post("/products/sizes/create", { name: selected.value });
+          const data = await apipost.post("/products/sizes");
+          setSizes(data.map((s) => ({ value: s.name, label: s.name })));
+        } catch (err) { console.error("Failed to save new size", err); }
+      }
+    } else {
+      setSelectedSize(null);
+      handleChange("size", "");
+    }
+  };
+
+  const handleSizeKeyDown = async (event) => {
+    if (event.key === "Enter" && inputSizeValue) {
+      event.preventDefault();
+      const exists = sizes.some((s) => s.value.toLowerCase() === inputSizeValue.toLowerCase());
+      if (!exists) {
+        try {
+          await apipost.post("/products/sizes/create", { name: inputSizeValue });
+          const newSize = { value: inputSizeValue, label: inputSizeValue };
+          setSizes((prev) => [...prev, newSize]);
+          setSelectedSize(newSize);
+          handleChange("size", inputSizeValue);
+          setInputSizeValue("");
+        } catch (err) { console.error("Failed to save new size", err); }
+      }
+    }
+  };
+
+  // --------------------------
+  // FORM + SUBMIT
+  // --------------------------
+
+  // ✅ enhanced handleChange so that when price or markup_percent changes,
+  //    warehouse_price is auto recalculated.
   const handleChange = (field, value) => {
-    setForm((s) => ({ ...s, [field]: value }));
+    setForm((prev) => {
+      const updated = { ...prev, [field]: value };
+
+      if (field === "price" || field === "markup_percent") {
+        const priceNum = parseFloat(
+          field === "price" ? value : updated.price
+        ) || 0;
+        const markupNum = parseFloat(
+          field === "markup_percent" ? value : updated.markup_percent
+        ) || 0;
+
+        // warehouse price = price + (price * markup% / 100)
+        const warehousePrice = priceNum + (priceNum * markupNum / 100);
+        updated.warehouse_price = warehousePrice ? warehousePrice.toFixed(2) : "";
+      }
+
+      return updated;
+    });
   };
 
   const handleSubmit = async () => {
     try {
-      debugger; 
       if (!form.name || !form.category) {
         alert("Please complete required fields.");
         return;
@@ -49,12 +180,13 @@ const AddProductDialog = ({ open, onClose,  form, setForm, isEditing, editingId 
       const payload = {
         ...form,
         price: Number(form.price || 0),
-        cost: Number(form.cost || 0),
-        default_warehouse_id: form.default_warehouse_id
-          ? Number(form.default_warehouse_id)
-          : null,
-        reorder_point: Number(form.reorder_point || 0),
         max_stock: Number(form.max_stock || 0),
+        markup_percent: form.markup_percent !== undefined
+          ? Number(form.markup_percent || 0)
+          : undefined,
+        warehouse_price: form.warehouse_price !== undefined
+          ? Number(form.warehouse_price || 0)
+          : undefined,
       };
 
       if (isEditing && editingId) {
@@ -66,38 +198,11 @@ const AddProductDialog = ({ open, onClose,  form, setForm, isEditing, editingId 
       }
 
       onClose();
-
-      // reload page after short delay
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      setTimeout(() => window.location.reload(), 1000);
     } catch (e) {
       console.error(e);
       toast.error(isEditing ? "Update failed" : "Create failed");
     }
-  };
-
-const handleSubmit2 = () => {
-  debugger; 
-  if (!form.name || !form.category) {
-    alert("Please complete required fields.");
-    return;
-  }
-  if (typeof onSubmit === "function") {
-    onSubmit();   // ✅ safe call
-  } else {
-    console.error("onSubmit prop is missing or not a function");
-  }
-};
-
-  const handleSubmit3 = () => {
-    debugger;
-    if (!form.name || !form.category) {
-      alert("Please complete required fields.");
-      return;
-    }
-    onSubmit();
-
   };
 
   return (
@@ -107,7 +212,7 @@ const handleSubmit2 = () => {
       </ModalHeader>
       <ModalBody>
         <ToastContainer limit={5} />
-        {/* Tabs Header */}
+
         <Nav tabs className="nav-tabs-custom nav-success">
           <NavItem>
             <NavLink
@@ -118,20 +223,9 @@ const handleSubmit2 = () => {
               Overview
             </NavLink>
           </NavItem>
-          <NavItem>
-            <NavLink
-              style={{ cursor: "pointer" }}
-              className={classnames({ active: activeTab === "2" })}
-              onClick={() => toggleTab("2")}
-            >
-              Specifications
-            </NavLink>
-          </NavItem>
         </Nav>
 
-        {/* Tabs Content */}
         <TabContent activeTab={activeTab} className="p-3">
-          {/* Overview Tab */}
           <TabPane tabId="1">
             <FormGroup>
               <Label>Product Name</Label>
@@ -151,52 +245,42 @@ const handleSubmit2 = () => {
             </FormGroup>
 
             <Row>
-              {/* <Col md={6}>
-                <FormGroup>
-                  <Label>Serial/SKU</Label>
-                  <Input
-                    value={form.sku || ""}
-                    onChange={(e) => handleChange("sku", e.target.value)}
-                    placeholder="e.g., APF747"
-                  />
-                </FormGroup>
-              </Col> */}
               <Col md={6}>
                 <FormGroup>
                   <Label>Category</Label>
-                  <Input
-                    type="select"
-                    value={form.category || ""}
-                    onChange={(e) => handleChange("category", e.target.value)}
-                  >
-                    <option value="">Select Category</option>
-                    <option>Awards</option>
-                    <option>Trophies</option>
-                    <option>Nameplates</option>
-                    <option>Plaques</option>
-                    <option>Certificates</option>
-                  </Input>
+                  <Select
+                    value={selectedCategory}
+                    onChange={handleCategoryChange}
+                    onInputChange={setInputCategoryValue}
+                    onKeyDown={handleCategoryKeyDown}
+                    inputValue={inputCategoryValue}
+                    options={categories}
+                    placeholder="Select or type category..."
+                    isClearable
+                  />
+                </FormGroup>
+              </Col>
+              <Col md={6}>
+                <FormGroup>
+                  <Label>Size</Label>
+                  <Select
+                    value={selectedSize}
+                    onChange={handleSizeChange}
+                    onInputChange={setInputSizeValue}
+                    onKeyDown={handleSizeKeyDown}
+                    inputValue={inputSizeValue}
+                    options={sizes}
+                    placeholder="Select or type size..."
+                    isClearable
+                  />
                 </FormGroup>
               </Col>
             </Row>
 
             <Row>
-              <Col md={6}>
+              <Col md={4}>
                 <FormGroup>
-                  <Label>Status</Label>
-                  <Input
-                    type="select"
-                    value={form.status || "active"}
-                    onChange={(e) => handleChange("status", e.target.value)}
-                  >
-                    <option value="active">Active</option>
-                    <option value="archived">Archived</option>
-                  </Input>
-                </FormGroup>
-              </Col>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Price</Label>
+                  <Label>Item Price</Label>
                   <Input
                     type="number"
                     value={form.price || ""}
@@ -204,98 +288,30 @@ const handleSubmit2 = () => {
                   />
                 </FormGroup>
               </Col>
-            </Row>
-
-            <Row>
-              <Col md={6}>
+              <Col md={4}>
                 <FormGroup>
-                  <Label>Brand</Label>
-                  <Input
-                    value={form.brand || ""}
-                    onChange={(e) => handleChange("brand", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Model</Label>
-                  <Input
-                    value={form.model || ""}
-                    onChange={(e) => handleChange("model", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-            </Row>
-
-            <Row>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Reorder Point</Label>
+                  <Label>Markup %</Label>
                   <Input
                     type="number"
-                    value={form.reorder_point || ""}
-                    onChange={(e) => handleChange("reorder_point", e.target.value)}
+                    value={form.markup_percent || ""}
+                    onChange={(e) => handleChange("markup_percent", e.target.value)}
+                    placeholder="e.g. 20"
                   />
                 </FormGroup>
               </Col>
-              <Col md={6}>
+              <Col md={4}>
                 <FormGroup>
-                  <Label>Max Stock</Label>
+                  <Label>Warehouse Price</Label>
                   <Input
                     type="number"
-                    value={form.max_stock || ""}
-                    onChange={(e) => handleChange("max_stock", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-            </Row>
-          </TabPane>
-
-          {/* Specifications Tab */}
-          <TabPane tabId="2">
-            <h6 className="text-muted">Dimensions</h6>
-            <Row>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Length</Label>
-                  <Input
-                    value={form.length || ""}
-                    onChange={(e) => handleChange("length", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Width</Label>
-                  <Input
-                    value={form.width || ""}
-                    onChange={(e) => handleChange("width", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-            </Row>
-            <Row>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Height</Label>
-                  <Input
-                    value={form.height || ""}
-                    onChange={(e) => handleChange("height", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Weight</Label>
-                  <Input
-                    value={form.weight || ""}
-                    onChange={(e) => handleChange("weight", e.target.value)}
+                    value={form.warehouse_price || ""}
+                    onChange={(e) => handleChange("warehouse_price", e.target.value)}
+                    placeholder="Auto-calculated or custom"
                   />
                 </FormGroup>
               </Col>
             </Row>
 
-            <h6 className="mt-4 text-muted">Technical</h6>
             <Row>
               <Col md={6}>
                 <FormGroup>
@@ -303,68 +319,6 @@ const handleSubmit2 = () => {
                   <Input
                     value={form.material || ""}
                     onChange={(e) => handleChange("material", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Base</Label>
-                  <Input
-                    value={form.base || ""}
-                    onChange={(e) => handleChange("base", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-            </Row>
-            <Row>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Engraving</Label>
-                  <Input
-                    value={form.engraving || ""}
-                    onChange={(e) => handleChange("engraving", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Packaging</Label>
-                  <Input
-                    value={form.packaging || ""}
-                    onChange={(e) => handleChange("packaging", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-            </Row>
-
-            <h6 className="mt-4 text-muted">Additional Info</h6>
-            <Row>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Supplier</Label>
-                  <Input
-                    value={form.supplier || ""}
-                    onChange={(e) => handleChange("supplier", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Manufactured</Label>
-                  <Input
-                    value={form.manufactured || ""}
-                    onChange={(e) => handleChange("manufactured", e.target.value)}
-                  />
-                </FormGroup>
-              </Col>
-            </Row>
-            <Row>
-              <Col md={6}>
-                <FormGroup>
-                  <Label>Warranty</Label>
-                  <Input
-                    value={form.warranty || ""}
-                    onChange={(e) => handleChange("warranty", e.target.value)}
                   />
                 </FormGroup>
               </Col>
@@ -383,7 +337,6 @@ const handleSubmit2 = () => {
         </Button>
       </ModalFooter>
     </Modal>
-    
   );
 };
 

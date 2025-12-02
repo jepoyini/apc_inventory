@@ -15,7 +15,6 @@ const UserCard = ({ user, onView, onEdit, onDelete }) => {
     return base + "/" + url.replace(/^\//, "");
   };
 
-  // Role badge color mapping
   const getRoleColor = (role) => {
     if (!role) return "secondary";
     switch (role.toLowerCase()) {
@@ -26,7 +25,6 @@ const UserCard = ({ user, onView, onEdit, onDelete }) => {
     }
   };
 
-  // Status badge color mapping
   const getStatusColor = (status) => {
     if (!status) return "secondary";
     switch (status.toLowerCase()) {
@@ -40,6 +38,7 @@ const UserCard = ({ user, onView, onEdit, onDelete }) => {
   return (
     <Card className="user-card shadow-sm">
       <CardBody className="text-center">
+
         {/* Avatar */}
         <img
           src={prefixUrl(user.avatar)}
@@ -67,9 +66,21 @@ const UserCard = ({ user, onView, onEdit, onDelete }) => {
 
         {/* Status Badge */}
         {user.status && (
-          <Badge color={getStatusColor(user.status)} pill className="mb-3">
+          <Badge color={getStatusColor(user.status)} pill className="mb-2">
             <i className="ri-checkbox-circle-line me-1"></i> {user.status}
           </Badge>
+        )}
+
+        {/* Warehouse */}
+        {(user.warehouse_name || user.warehouse_id) && (
+          <div className="mt-2 mb-3">
+            <Badge color="dark" pill>
+              <i className="ri-building-line me-1"></i>
+              {user.warehouse_name
+                ? user.warehouse_name
+                : `Warehouse #${user.warehouse_id}`}
+            </Badge>
+          </div>
         )}
 
         {/* Logged Time & Location */}

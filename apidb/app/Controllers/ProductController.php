@@ -11,7 +11,621 @@ class ProductController extends ResourceController
 {
 
 
+    public function WarehouseItems()
+    {
+        global $conn;
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+        $page   = max(1, (int)($p['page'] ?? 1));
+        $limit  = (int)($p['limit'] ?? 12); // allow 0 = ALL
+        $offset = ($page - 1) * ($limit > 0 ? $limit : 1);
+
+        $search  = trim((string)($p['search'] ?? ''));
+        $status  = trim((string)($p['status'] ?? ''));
+        $whName  = trim((string)($p['warehouse'] ?? ''));
+        $uid     = trim((string)($p['uid'] ?? ''));   // ⭐ NEW
+
+        $where  = [];
+        $params = [];
+        $types  = '';
+
+        // ⭐ If uid is provided, get user's warehouse_id and force filter
+        if ($uid !== '') {
+            $stmt = $conn->prepare("SELECT warehouse_id FROM users WHERE id = ? LIMIT 1");
+            $uidInt = (int)$uid;
+            $stmt->bind_param("i", $uidInt);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!empty($row['warehouse_id'])) {
+                $userWarehouseId = (int)$row['warehouse_id'];
+                // Force this user to see only their warehouse
+                $where[]  = "w.id = ?";
+                $params[] = $userWarehouseId;
+                $types   .= 'i';
+            }
+        }
+
+        // ✅ Search filter (warehouse name, item serial, product name/category)
+        if ($search !== '') {
+            $like = "%{$search}%";
+            $where[] = "(
+                w.name LIKE ? 
+                OR i.serial LIKE ? 
+                OR p.name LIKE ? 
+                OR p.category LIKE ?
+            )";
+            array_push($params, $like, $like, $like, $like);
+            $types .= 'ssss';
+        }
+
+        // ✅ Status filter
+        if ($status !== '') {
+            $where[] = "i.status = ?";
+            $params[] = $status;
+            $types   .= 's';
+        }
+
+        // ✅ Warehouse name filter
+        if ($whName !== '') {
+            $where[] = "w.name LIKE ?";
+            $params[] = "%{$whName}%";
+            $types   .= 's';
+        }
+
+        $sqlWhere = $where ? ("WHERE " . implode(" AND ", $where)) : '';
+
+        // ✅ Count distinct warehouses
+        $countSql = "
+            SELECT COUNT(DISTINCT w.id) AS c
+            FROM warehouses w
+            LEFT JOIN items i ON i.current_warehouse_id = w.id
+            LEFT JOIN products p ON p.id = i.product_id
+            $sqlWhere
+        ";
+        $stmt = $conn->prepare($countSql);
+        if ($types) { $stmt->bind_param($types, ...$params); }
+        $stmt->execute();
+        $total = (int)($stmt->get_result()->fetch_assoc()['c'] ?? 0);
+        $stmt->close();
+
+        // ✅ Warehouse list with pagination
+        $listSql = "
+            SELECT DISTINCT w.id, w.name, w.location, w.created_at
+            FROM warehouses w
+            LEFT JOIN items i ON i.current_warehouse_id = w.id
+            LEFT JOIN products p ON p.id = i.product_id
+            $sqlWhere
+            ORDER BY w.name ASC
+        ";
+
+        $stmt = null;
+        if ($limit > 0) {
+            $listSql .= " LIMIT ? OFFSET ?";
+            $listParams = $params;
+            $listTypes  = $types.'ii';
+            $listParams[] = $limit;
+            $listParams[] = $offset;
+
+            $stmt = $conn->prepare($listSql);
+            $stmt->bind_param($listTypes, ...$listParams);
+        } else {
+            $stmt = $conn->prepare($listSql);
+            if ($types) { $stmt->bind_param($types, ...$params); }
+        }
+
+        $stmt->execute();
+        $warehouses = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        // ✅ Attach items to each warehouse
+        if ($warehouses) {
+            $ids = array_column($warehouses, 'id');
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $tps = str_repeat('i', count($ids));
+
+            $stmt = $conn->prepare("
+                SELECT 
+                    i.id, i.serial, i.status, i.updated_at, 
+                    i.product_id, p.name AS product_name, p.category AS product_category, 
+                    i.current_warehouse_id
+                FROM items i
+                LEFT JOIN products p ON p.id = i.product_id
+                WHERE i.current_warehouse_id IN ($ph)
+                ORDER BY i.id ASC
+            ");
+            $stmt->bind_param($tps, ...$ids);
+            $stmt->execute();
+            $itemRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+
+            // group items by warehouse_id
+            $itemMap = [];
+            foreach ($itemRows as $ir) {
+                $itemMap[$ir['current_warehouse_id']][] = $ir;
+            }
+
+            foreach ($warehouses as &$w) {
+                $w['items'] = $itemMap[$w['id']] ?? [];
+            }
+        }
+
+        return $this->respond([
+            'warehouses'   => $warehouses,
+            'totalRecords' => $total
+        ]);
+    }
+
+public function productsummary()
+{
+    global $conn;
+    $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+    $page   = max(1, (int)($p['page']  ?? 1));
+    $limit  = (int)($p['limit'] ?? 12); // allow 0 = ALL
+    $offset = ($page - 1) * ($limit > 0 ? $limit : 1);
+
+    $search    = trim((string)($p['search'] ?? ''));
+    $category  = trim((string)($p['category'] ?? ''));
+    $warehouse = trim((string)($p['warehouse'] ?? ''));
+    $status    = trim((string)($p['status'] ?? ''));
+    $stockLvl  = trim((string)($p['stockLevel'] ?? '')); 
+    $tagsIn    = is_array($p['tags'] ?? null) ? $p['tags'] : [];
+    $uid       = trim((string)($p['uid'] ?? ''));
+
+    $where  = [];
+    $params = [];
+    $types  = '';
+
+    // ✅ If uid is given, filter by user's warehouse_id
+    if ($uid !== '') {
+        $stmt = $conn->prepare("SELECT warehouse_id FROM users WHERE id = ? LIMIT 1");
+        $uidInt = (int)$uid;
+        $stmt->bind_param("i", $uidInt);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!empty($row['warehouse_id'])) {
+            $userWarehouseId = (int)$row['warehouse_id'];
+            $where[]  = "p.warehouse_id = ?";
+            $params[] = $userWarehouseId;
+            $types   .= 'i';
+        }
+    }
+
+    if ($search !== '') {
+        if (ctype_digit($search)) {
+            $where[] = "(p.id = ? OR p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+            $id = (int)$search;
+            $like = "%{$search}%";
+            array_push($params, $id, $like, $like, $like);
+            $types .= 'isss';
+        } else {
+            $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+            $like = "%{$search}%";
+            array_push($params, $like, $like, $like);
+            $types .= 'sss';
+        }
+    }
+
+    if ($category !== '') {
+        $where[] = "p.category = ?";
+        $params[] = $category; 
+        $types   .= 's';
+    }
+
+    if ($status !== '') {
+        $where[] = "p.status = ?";
+        $params[] = $status; 
+        $types   .= 's';
+    }
+
+    // ✅ explicit warehouse filter
+    if ($warehouse !== '') {
+        $where[]  = "p.warehouse_id = ?";
+        $params[] = (int)$warehouse; 
+        $types   .= 'i';
+    }
+
+    if ($tagsIn) {
+        $ph = implode(',', array_fill(0, count($tagsIn), '?'));
+        $where[] = "p.id IN (SELECT pt.product_id FROM products_tags pt WHERE pt.tag_text IN ($ph))";
+        foreach ($tagsIn as $t) {
+            $params[] = (string)$t;
+            $types   .= 's';
+        }
+    }
+
+    if ($stockLvl === 'low') {
+        $where[] = "(p.reorder_point>0 AND (SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED')) <= p.reorder_point)";
+    } elseif ($stockLvl === 'out') {
+        $where[] = "NOT EXISTS (SELECT 1 FROM items i WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED'))";
+    }
+
+    $sqlWhere = $where ? ("WHERE ".implode(" AND ", $where)) : '';
+
+    // total count
+    $stmt = $conn->prepare("SELECT COUNT(*) AS c FROM products p {$sqlWhere}");
+    if ($types) { $stmt->bind_param($types, ...$params); }
+    $stmt->execute();
+    $total = (int)($stmt->get_result()->fetch_assoc()['c'] ?? 0);
+    $stmt->close();
+
+    // main product list (✅ back to items-based aggregates, no p.available_qty)
+    $listSql = "
+        SELECT
+          p.id, p.sku, p.name, p.category, p.status,
+          p.price, p.cost, p.warehouse_id, p.reorder_point,
+          p.brand, p.model, p.description, p.warehouse_price, 
+          COALESCE((
+            SELECT url FROM product_images pi
+            WHERE pi.product_id=p.id
+            ORDER BY is_primary DESC, id ASC LIMIT 1
+          ), '') AS primary_image,
+
+          COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id),0) AS total_qty,
+          COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='IN_STOCK'),0) AS available_qty,
+          COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='IN_TRANSIT'),0) AS in_transit_qty,
+          COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='SOLD'),0) AS sold_qty
+
+        FROM products p
+        {$sqlWhere}
+        ORDER BY p.created_at DESC
+    ";
+
+    $stmt = null;
+    if ($limit > 0) {
+        $listSql .= " LIMIT ? OFFSET ?";
+        $listParams = $params;
+        $listTypes  = $types.'ii';
+        $listParams[] = $limit;
+        $listParams[] = $offset;
+
+        $stmt = $conn->prepare($listSql);
+        $stmt->bind_param($listTypes, ...$listParams);
+    } else {
+        $stmt = $conn->prepare($listSql);
+        if ($types) { $stmt->bind_param($types, ...$params); }
+    }
+
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    // attach tags and items
+    if ($rows) {
+        $ids = array_column($rows, 'id');
+        $ph  = implode(',', array_fill(0, count($ids), '?'));
+        $tps = str_repeat('i', count($ids));
+
+        // tags
+        $stmt = $conn->prepare("SELECT product_id, tag_text FROM products_tags WHERE product_id IN ($ph)");
+        $stmt->bind_param($tps, ...$ids);
+        $stmt->execute();
+        $all = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        $tagMap = [];
+        foreach ($all as $r) $tagMap[$r['product_id']][] = $r['tag_text'];
+
+        // items
+        $stmt = $conn->prepare("
+            SELECT i.id, i.product_id, i.serial, i.status, i.created_at, i.updated_at, w.name AS warehouse_name
+            FROM items i
+            LEFT JOIN warehouses w ON w.id = i.current_warehouse_id
+            WHERE i.product_id IN ($ph)
+            ORDER BY i.id ASC
+        ");
+        $stmt->bind_param($tps, ...$ids);
+        $stmt->execute();
+        $itemRows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        $itemMap = [];
+        foreach ($itemRows as $ir) $itemMap[$ir['product_id']][] = $ir;
+
+        foreach ($rows as &$r) {
+            $r['tags']  = $tagMap[$r['id']]  ?? [];
+            $r['items'] = $itemMap[$r['id']] ?? [];
+        }
+    }
+
+    // ✅ summary: totalProducts from products.qty, others from items
+    $sumSql = "
+        SELECT
+          /* total quantity from products.qty */
+          COALESCE(SUM(p.qty), 0) AS totalProducts,
+
+          /* inventory value: price * available (IN_STOCK + RESERVED) */
+          COALESCE(SUM(
+            p.price * (
+              SELECT COUNT(*) 
+              FROM items i 
+              WHERE i.product_id = p.id AND i.status IN ('IN_STOCK','RESERVED')
+            )
+          ), 0) AS totalValue,
+
+          SUM(p.status='active') AS activeProducts,
+
+          SUM(
+            p.reorder_point > 0 AND (
+              (SELECT COUNT(*) FROM items i
+                WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED')
+              ) <= p.reorder_point
+            )
+          ) AS lowStock,
+
+          SUM(
+            NOT EXISTS (
+              SELECT 1 FROM items i
+              WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED')
+            )
+          ) AS outOfStock,
+
+          /* summary breakdown per status from items */
+          COALESCE(SUM(
+            (SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='IN_STOCK')
+          ),0) AS available_qty,
+
+          COALESCE(SUM(
+            (SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='IN_TRANSIT')
+          ),0) AS in_transit_qty,
+
+          COALESCE(SUM(
+            (SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='SOLD')
+          ),0) AS sold_qty
+
+        FROM products p
+        $sqlWhere
+    ";
+
+    $stmt = $conn->prepare($sumSql);
+    if ($types) { $stmt->bind_param($types, ...$params); }
+    $stmt->execute();
+    $summary = $stmt->get_result()->fetch_assoc() ?? [];
+    $stmt->close();
+
+    return $this->respond([
+        'products'     => $rows,
+        'totalRecords' => $total,
+        'summary'      => [
+            'totalProducts'   => (int)($summary['totalProducts'] ?? 0),
+            'totalValue'      => (float)($summary['totalValue'] ?? 0),
+            'activeProducts'  => (int)($summary['activeProducts'] ?? 0),
+            'lowStock'        => (int)($summary['lowStock'] ?? 0),
+            'outOfStock'      => (int)($summary['outOfStock'] ?? 0),
+
+            'available_qty'   => (int)($summary['available_qty'] ?? 0),
+            'in_transit_qty'  => (int)($summary['in_transit_qty'] ?? 0),
+            'sold_qty'        => (int)($summary['sold_qty'] ?? 0),
+        ],
+    ]);
+}
+
+
+
+    // ==============================================
+    // Get all categories
+    // Route: POST /categories
+    // ==============================================
+    public function categories()
+    {
+        global $conn; 
+
+        $result = $conn->query("SELECT id, name FROM categories ORDER BY `order` ASC");
+
+        if (!$result) {
+            return $this->response->setJSON([
+                "status" => "error",
+                "message" => $conn->error
+            ]);
+        }
+
+        $rows = $result->fetch_all(MYSQLI_ASSOC);
+
+        return $this->response->setJSON($rows);
+    }
+
+    // ==============================================
+    // Create new category if not exists
+    // Route: POST /categories/create
+    // ==============================================
+    public function categories_create()
+    {
+        global $conn; 
+
+        $request = $this->request->getJSON(true);
+        $name = trim($request['name'] ?? "");
+
+        if ($name === "") {
+            return $this->response->setJSON([
+                "status" => "error",
+                "message" => "Category name is required"
+            ]);
+        }
+
+        // Check if category exists
+        $stmt = $conn->prepare("SELECT id FROM categories WHERE name = ?");
+        $stmt->bind_param("s", $name);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+
+        if ($result) {
+            return $this->response->setJSON([
+                "status" => "exists",
+                "message" => "Category already exists",
+                "id" => $result['id']
+            ]);
+        }
+
+        // Insert new category
+        $stmt = $conn->prepare("INSERT INTO categories (name) VALUES (?)");
+        $stmt->bind_param("s", $name);
+        $stmt->execute();
+        $insertId = $stmt->insert_id;
+
+        return $this->response->setJSON([
+            "status" => "success",
+            "message" => "Category created",
+            "id" => $insertId,
+            "name" => $name
+        ]);
+    }
+
+
+    // ==============================================
+    // Get all sizes
+    // Route: POST /sizes
+    // ==============================================
+    public function sizes()
+    {
+        global $conn; 
+
+        $result = $conn->query("SELECT id, name FROM sizes ORDER BY `order` ASC");
+
+        if (!$result) {
+            return $this->response->setJSON([
+                "status" => "error",
+                "message" => $conn->error
+            ]);
+        }
+
+        $rows = $result->fetch_all(MYSQLI_ASSOC);
+
+        return $this->response->setJSON($rows);
+    }
+
+    // ==============================================
+    // Create new category if not exists
+    // Route: POST /sizes/create
+    // ==============================================
+    public function sizes_create()
+    {
+        global $conn; 
+
+        $request = $this->request->getJSON(true);
+        $name = trim($request['name'] ?? "");
+
+        if ($name === "") {
+            return $this->response->setJSON([
+                "status" => "error",
+                "message" => "Sizes is required"
+            ]);
+        }
+
+        // Check if category exists
+        $stmt = $conn->prepare("SELECT id FROM sizes WHERE name = ?");
+        $stmt->bind_param("s", $name);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+
+        if ($result) {
+            return $this->response->setJSON([
+                "status" => "exists",
+                "message" => "Size already exists",
+                "id" => $result['id']
+            ]);
+        }
+
+        // Insert new category
+        $stmt = $conn->prepare("INSERT INTO sizes (name) VALUES (?)");
+        $stmt->bind_param("s", $name);
+        $stmt->execute();
+        $insertId = $stmt->insert_id;
+
+        return $this->response->setJSON([
+            "status" => "success",
+            "message" => "Size created",
+            "id" => $insertId,
+            "name" => $name
+        ]);
+    }
+
+
+
 public function recent()
+{
+    global $conn;
+    $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+    $limit  = max(1, min(50, (int)($p['limit'] ?? 10))); 
+    $offset = max(0, (int)($p['offset'] ?? 0));
+    $days   = isset($p['days']) ? (int)$p['days'] : 30;
+
+    // 🔥 NEW: get uid
+    $uid = isset($p['uid']) ? (int)$p['uid'] : 0;
+    $userWarehouseId = null;
+
+    if ($uid > 0) {
+        // Get user's warehouse
+        $stmt = $conn->prepare("SELECT warehouse_id FROM users WHERE id = ? LIMIT 1");
+        $stmt->bind_param("i", $uid);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!empty($row['warehouse_id'])) {
+            $userWarehouseId = (int)$row['warehouse_id'];
+        }
+    }
+
+    // 🔥 BASE QUERY
+    $sql = "
+        SELECT 
+            pt.id, pt.product_id, pt.user_id, pt.status, pt.created_at,
+            p.name AS product_name,
+            (
+                SELECT pi.url 
+                FROM product_images pi 
+                WHERE pi.product_id = pt.product_id AND pi.is_primary = 1  
+                ORDER BY pi.id ASC 
+                LIMIT 1
+            ) AS primary_image,
+            CONCAT(u.firstname, ' ', u.lastname) AS user_name,
+            w.name AS warehouse_name
+        FROM product_tracking pt
+        LEFT JOIN products p ON pt.product_id = p.id
+        LEFT JOIN users u ON pt.user_id = u.id
+        LEFT JOIN warehouses w ON pt.warehouse_id = w.id
+        WHERE pt.created_at >= (NOW() - INTERVAL ? DAY)
+    ";
+
+    $params = [$days];
+    $types  = "i";
+
+    // 🔥 If user belongs to a warehouse → enforce the filter
+    if ($userWarehouseId !== null) {
+        $sql .= " AND p.warehouse_id = ? ";
+        $params[] = $userWarehouseId;
+        $types   .= "i";
+    }
+
+    // ORDER + PAGINATION
+    $sql .= " ORDER BY pt.created_at DESC LIMIT ? OFFSET ?";
+
+    $params[] = $limit;
+    $params[] = $offset;
+    $types   .= "ii";
+
+    // Execute
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    return $this->respond([
+        'activities' => $rows,
+        'limit'      => $limit,
+        'offset'     => $offset,
+        'days'       => $days,
+        'warehouse_filter_applied' => ($userWarehouseId !== null),
+        'warehouse_id' => $userWarehouseId
+    ]);
+}
+
+
+public function recent1()
 {
     global $conn;
     $p = json_decode(file_get_contents("php://input"), true) ?? [];
@@ -21,6 +635,24 @@ public function recent()
 
     // 🔹 default: last 30 days
     $days = isset($p['days']) ? (int)$p['days'] : 30;
+
+    // 🔥 NEW: get uid
+    $uid = isset($p['uid']) ? (int)$p['uid'] : 0;
+    $userWarehouseId = null;
+
+    if ($uid > 0) {
+        // Get user's warehouse
+        $stmt = $conn->prepare("SELECT warehouse_id FROM users WHERE id = ? LIMIT 1");
+        $stmt->bind_param("i", $uid);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!empty($row['warehouse_id'])) {
+            $userWarehouseId = (int)$row['warehouse_id'];
+        }
+    }
+
 
     $sql = "
         SELECT 
@@ -139,6 +771,7 @@ public function recent()
             if (empty($p[$k])) return $this->failValidationErrors("$k is required");
         }
 
+        // Insert item
         $sql = "INSERT INTO items 
             (product_id, serial, current_warehouse_id, location_code, condition_label, status, acquired_at, created_at) 
             VALUES (?,?,?,?,?,?,?,NOW())";
@@ -159,7 +792,24 @@ public function recent()
 
         if (!$ok) return $this->fail("Insert failed");
 
-        return $this->respondCreated(['id'=>$id]);
+        // 🔹 Recalculate qty for this product
+        $sqlQty = "SELECT COUNT(*) AS total FROM items WHERE product_id = ?";
+        $stmtQty = $conn->prepare($sqlQty);
+        $stmtQty->bind_param("i", $p['product_id']);
+        $stmtQty->execute();
+        $resQty = $stmtQty->get_result();
+        $rowQty = $resQty->fetch_assoc();
+        $totalQty = $rowQty['total'] ?? 0;
+        $stmtQty->close();
+
+        // 🔹 Update products.qty
+        $sqlUpdate = "UPDATE products SET qty = ? WHERE id = ?";
+        $stmtUpdate = $conn->prepare($sqlUpdate);
+        $stmtUpdate->bind_param("ii", $totalQty, $p['product_id']);
+        $stmtUpdate->execute();
+        $stmtUpdate->close();
+
+        return $this->respondCreated(['id'=>$id, 'new_qty'=>$totalQty]);
     }
 
     /** POST /items/{id}/update */
@@ -770,11 +1420,11 @@ public function recent()
         return $out;
     }
 
-
     /** POST /products  — list + filters + pagination + summary */
     public function index()
     {
         global $conn;
+
         $p = json_decode(file_get_contents("php://input"), true) ?? [];
 
         $page   = max(1, (int)($p['page']  ?? 1));
@@ -787,28 +1437,261 @@ public function recent()
         $status    = trim((string)($p['status'] ?? ''));
         $stockLvl  = trim((string)($p['stockLevel'] ?? '')); // '', 'low', 'out'
         $tagsIn    = is_array($p['tags'] ?? null) ? $p['tags'] : [];
+        $uid       = trim((string)($p['uid'] ?? ''));
 
         $where  = [];
         $params = [];
         $types  = '';
 
-if ($search !== '') {
-    // ✅ allow searching by id (exact match if numeric, or LIKE if string)
-    if (ctype_digit($search)) {
-        // if the search is all digits, check exact id match + other LIKE fields
-        $where[] = "(p.id = ? OR p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
-        $id = (int)$search;
-        $like = "%{$search}%";
-        array_push($params, $id, $like, $like, $like);
-        $types .= 'isss';
-    } else {
-        // non-numeric, fallback to LIKE search
-        $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
-        $like = "%{$search}%";
-        array_push($params, $like, $like, $like);
-        $types .= 'sss';
+        // 🔥 If uid is given, get the user's warehouse_id and filter products by it
+        if ($uid !== '') {
+            $userWarehouseId = null;
+
+            $stmt = $conn->prepare("SELECT warehouse_id FROM users WHERE id = ? LIMIT 1");
+            $uidInt = (int)$uid;
+            $stmt->bind_param("i", $uidInt);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!empty($row['warehouse_id'])) {
+                $userWarehouseId = (int)$row['warehouse_id'];
+
+                // Force filter to user's warehouse
+                $where[]  = "p.warehouse_id = ?";
+                $params[] = $userWarehouseId;
+                $types   .= 'i';
+            }
+        }
+
+        if ($search !== '') {
+            if (ctype_digit($search)) {
+                $where[] = "(p.id = ? OR p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+                $id   = (int)$search;
+                $like = "%{$search}%";
+                array_push($params, $id, $like, $like, $like);
+                $types .= 'isss';
+            } else {
+                $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+                $like = "%{$search}%";
+                array_push($params, $like, $like, $like);
+                $types .= 'sss';
+            }
+        }
+
+        if ($category !== '') {
+            $where[]  = "p.category = ?";
+            $params[] = $category;
+            $types   .= 's';
+        }
+
+        if ($status !== '') {
+            $where[]  = "p.status = ?";
+            $params[] = $status;
+            $types   .= 's';
+        }
+
+        // ✅ if a specific warehouse filter is sent, use products.warehouse_id
+        if ($warehouse !== '') {
+            $where[]  = "p.warehouse_id = ?";
+            $params[] = (int)$warehouse;
+            $types   .= 'i';
+        }
+
+        if ($tagsIn) {
+            $ph = implode(',', array_fill(0, count($tagsIn), '?'));
+            $where[] = "p.id IN (SELECT pt.product_id FROM products_tags pt WHERE pt.tag_text IN ($ph))";
+            foreach ($tagsIn as $t) { 
+                $params[] = (string)$t; 
+                $types   .= 's'; 
+            }
+        }
+
+        if ($stockLvl === 'low') {
+            $where[] = "(p.reorder_point>0 AND (SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED')) <= p.reorder_point)";
+        } elseif ($stockLvl === 'out') {
+            $where[] = "NOT EXISTS (SELECT 1 FROM items i WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED'))";
+        }
+
+        $sqlWhere = $where ? ("WHERE ".implode(" AND ", $where)) : '';
+
+        // total
+        $stmt = $conn->prepare("SELECT COUNT(*) AS c FROM products p {$sqlWhere}");
+        if ($types) { $stmt->bind_param($types, ...$params); }
+        $stmt->execute();
+        $total = (int)($stmt->get_result()->fetch_assoc()['c'] ?? 0);
+        $stmt->close();
+
+        // page list
+        $listSql = "
+            SELECT
+              p.id, p.sku, p.name, p.category, p.last_status as status,
+              p.price, p.cost, p.warehouse_id, p.reorder_point,
+              p.brand, p.model, p.description, p.warehouse_price, 
+              COALESCE((
+                SELECT url FROM product_images pi
+                WHERE pi.product_id=p.id
+                ORDER BY is_primary DESC, id ASC LIMIT 1
+              ), '') AS primary_image,
+              COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id),0) AS total_qty,
+              COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='AVAILABLE'),0) AS available_qty,
+              COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='RESERVED'),0) AS reserved_qty,
+              COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='SHIPPED'),0) AS shipped_qty
+            FROM products p
+            {$sqlWhere}
+            ORDER BY p.created_at DESC
+            LIMIT ? OFFSET ?";
+
+        $listParams   = $params; 
+        $listTypes    = $types.'ii';
+        $listParams[] = $limit; 
+        $listParams[] = $offset;
+
+        $stmt = $conn->prepare($listSql);
+        $stmt->bind_param($listTypes, ...$listParams);
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        // attach tags
+        if ($rows) {
+            $ids = array_column($rows, 'id');
+            $ph  = implode(',', array_fill(0, count($ids), '?'));
+            $tps = str_repeat('i', count($ids));
+            $stmt = $conn->prepare("SELECT product_id, tag_text FROM products_tags WHERE product_id IN ($ph)");
+            $stmt->bind_param($tps, ...$ids);
+            $stmt->execute();
+            $all = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+            $tagMap = [];
+            foreach ($all as $r) $tagMap[$r['product_id']][] = $r['tag_text'];
+            foreach ($rows as &$r) $r['tags'] = $tagMap[$r['id']] ?? [];
+        }
+
+        // ---- Summary (ONLY_FULL_GROUP_BY safe) ----
+        $whereBlock = $sqlWhere; // e.g. "WHERE p.status = ? AND ..."
+        $itemsAvailSql = "SELECT product_id, SUM(status IN ('IN_STOCK','RESERVED')) AS avail
+                          FROM items GROUP BY product_id";
+
+
+        $sumSql = "
+            SELECT
+  COALESCE(SUM(p.qty), 0) AS totalProducts,
+
+              COALESCE(SUM(
+                p.price * (
+                  SELECT SUM(i.status IN ('IN_STOCK','RESERVED'))
+                  FROM items i
+                  WHERE i.product_id = p.id
+                )
+              ),0) AS totalValue,
+
+              SUM(p.status='active') AS activeProducts,
+
+              SUM(
+                p.reorder_point > 0 AND (
+                  (SELECT COUNT(*) FROM items i
+                    WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED')
+                  ) <= p.reorder_point
+                )
+              ) AS lowStock,
+
+              SUM(
+                NOT EXISTS (
+                  SELECT 1 FROM items i
+                  WHERE i.product_id=p.id AND i.status IN ('IN_STOCK','RESERVED')
+                )
+              ) AS outOfStock,
+
+              /* ✅ TOTAL AVAILABLE (status = 'AVAILABLE') */
+              COALESCE(SUM(
+                (SELECT COUNT(*) 
+                 FROM items i 
+                 WHERE i.product_id = p.id AND i.status = 'AVAILABLE')
+              ),0) AS available_qty,
+
+              /* ✅ TOTAL IN-TRANSIT (status = 'IN_TRANSIT') */
+              COALESCE(SUM(
+                (SELECT COUNT(*) 
+                 FROM items i 
+                 WHERE i.product_id = p.id AND i.status = 'IN_TRANSIT')
+              ),0) AS in_transit_qty,
+
+              /* ✅ TOTAL SOLD (status = 'SOLD') */
+              COALESCE(SUM(
+                (SELECT COUNT(*) 
+                 FROM items i 
+                 WHERE i.product_id = p.id AND i.status = 'SOLD')
+              ),0) AS sold_qty
+
+            FROM products p
+            $sqlWhere
+        ";
+
+        $stmt = $conn->prepare($sumSql);
+        if ($types) { 
+            $stmt->bind_param($types, ...$params); 
+        }
+        $stmt->execute();
+        $summary = $stmt->get_result()->fetch_assoc() ?? [];
+        $stmt->close();
+
+        return $this->respond([
+            'products'     => $rows,
+            'totalRecords' => $total,
+            'userid'       => $uid,
+            'summary'      => [
+                'totalProducts'  => (int)($summary['totalProducts'] ?? 0),
+                'totalValue'     => (float)($summary['totalValue'] ?? 0),
+                'activeProducts' => (int)($summary['activeProducts'] ?? 0),
+                'lowStock'       => (int)($summary['lowStock'] ?? 0),
+                'outOfStock'     => (int)($summary['outOfStock'] ?? 0),
+                'available_qty'   => (int)($summary['available_qty'] ?? 0),
+                'in_transit_qty'  => (int)($summary['in_transit_qty'] ?? 0),
+                'sold_qty'        => (int)($summary['sold_qty'] ?? 0),                
+            ],
+        ]);
     }
-}
+
+    public function index1()
+    {
+        global $conn;
+
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
+        $page   = max(1, (int)($p['page']  ?? 1));
+        $limit  = max(1, min(100, (int)($p['limit'] ?? 12)));
+        $offset = ($page - 1) * $limit;
+
+        $search    = trim((string)($p['search'] ?? ''));
+        $category  = trim((string)($p['category'] ?? ''));
+        $warehouse = trim((string)($p['warehouse'] ?? ''));
+        $status    = trim((string)($p['status'] ?? ''));
+        $stockLvl  = trim((string)($p['stockLevel'] ?? '')); // '', 'low', 'out'
+        $tagsIn    = is_array($p['tags'] ?? null) ? $p['tags'] : [];
+        $uid    = trim((string)($p['uid'] ?? ''));
+
+        $where  = [];
+        $params = [];
+        $types  = '';
+
+        if ($search !== '') {
+            // ✅ allow searching by id (exact match if numeric, or LIKE if string)
+            if (ctype_digit($search)) {
+                // if the search is all digits, check exact id match + other LIKE fields
+                $where[] = "(p.id = ? OR p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+                $id = (int)$search;
+                $like = "%{$search}%";
+                array_push($params, $id, $like, $like, $like);
+                $types .= 'isss';
+            } else {
+                // non-numeric, fallback to LIKE search
+                $where[] = "(p.name LIKE ? OR p.sku LIKE ? OR p.category LIKE ?)";
+                $like = "%{$search}%";
+                array_push($params, $like, $like, $like);
+                $types .= 'sss';
+            }
+        }
 
         if ($category !== '') {
             $where[] = "p.category = ?";
@@ -845,7 +1728,7 @@ if ($search !== '') {
         // page list
         $listSql = "
             SELECT
-              p.id, p.sku, p.name, p.category, p.status,
+              p.id, p.sku, p.name, p.category, p.last_status as status,
               p.price, p.cost, p.default_warehouse_id, p.reorder_point,
               p.brand, p.model, p.description,
               COALESCE((
@@ -855,7 +1738,7 @@ if ($search !== '') {
               ), '') AS primary_image,
               -- quantities
               COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id),0) AS total_qty,
-              COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='IN_STOCK'),0) AS available_qty,
+              COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='AVAILABLE'),0) AS available_qty,
               COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='RESERVED'),0) AS reserved_qty,
               COALESCE((SELECT COUNT(*) FROM items i WHERE i.product_id=p.id AND i.status='SHIPPED'),0) AS shipped_qty
             FROM products p
@@ -938,6 +1821,7 @@ if ($search !== '') {
         return $this->respond([
             'products'     => $rows,
             'totalRecords' => $total,
+            'userid'       => $uid,
             'summary'      => [
                 'totalProducts'  => (int)($summary['totalProducts'] ?? 0),
                 'totalValue'     => (float)($summary['totalValue'] ?? 0),
@@ -1027,12 +1911,100 @@ if ($search !== '') {
         if (!$id) return $this->failValidationErrors('Missing id');
         $p = json_decode(file_get_contents("php://input"), true) ?? [];
 
+        $fields = []; 
+        $vals   = []; 
+        $types  = '';
+
+        $map = [
+            'sku'                   => 's',
+            'name'                  => 's',
+            'category'              => 's',
+            'status'                => 's',
+            'size'                  => 's',
+            'price'                 => 'd',
+            'cost'                  => 'd',
+            'default_warehouse_id'  => 'i',
+            'reorder_point'         => 'i',
+            'max_stock'             => 'i',   // ✅ existing
+            'brand'                 => 's',
+            'model'                 => 's',
+            'description'           => 's',
+
+            // ✅ NEW pricing fields
+            'markup_percent'        => 'd',
+            'warehouse_price'       => 'd',
+
+            // ✅ specification fields
+            'length'                => 's',
+            'width'                 => 's',
+            'height'                => 's',
+            'weight'                => 's',
+            'material'              => 's',
+            'base'                  => 's',
+            'engraving'             => 's',
+            'packaging'             => 's',
+            'supplier'              => 's',
+            'manufactured'          => 's',
+            'warranty'              => 's'
+        ];
+
+        foreach ($map as $k => $t) {
+            if (array_key_exists($k, $p)) {
+                $fields[] = "$k = ?";
+                if ($t === 'i') {
+                    $vals[] = (int)$p[$k];
+                } elseif ($t === 'd') {
+                    $vals[] = (float)$p[$k];
+                } else {
+                    $vals[] = $p[$k];
+                }
+                $types .= $t;
+            }
+        }
+
+        if (!$fields) return $this->respond(['message' => 'Nothing to update']);
+
+        $vals[] = (int)$id;
+        $types .= 'i';
+
+        $sql = "UPDATE products SET " . implode(',', $fields) . " WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$vals);
+        $ok = $stmt->execute();
+        $stmt->close();
+
+        if (!$ok) return $this->fail('Update failed');
+
+        if (isset($p['tags']) && is_array($p['tags'])) {
+            $conn->query("DELETE FROM products_tags WHERE product_id=".(int)$id);
+            $ins = $conn->prepare("INSERT INTO products_tags (product_id, tag_text) VALUES (?,?)");
+            foreach ($p['tags'] as $t) {
+                $tt = trim((string)$t);
+                if ($tt === '') continue;
+                $pid = (int)$id;
+                $ins->bind_param("is", $pid, $tt);
+                $ins->execute();
+            }
+            $ins->close();
+        }
+
+        return $this->respond(['updated' => true]);
+    }
+
+    /** POST /products/{id}/update */
+    public function update1($id = null)
+    {
+        global $conn;
+        if (!$id) return $this->failValidationErrors('Missing id');
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
+
         $fields = []; $vals = []; $types = '';
         $map = [
             'sku' => 's',
             'name' => 's',
             'category' => 's',
             'status' => 's',
+            'size' => 's',
             'price' => 'd',
             'cost' => 'd',
             'default_warehouse_id' => 'i',
@@ -1103,6 +2075,7 @@ if ($search !== '') {
         $stmt->bind_param("i", $id);
         $ok = $stmt->execute();
         $stmt->close();
+   
 
         if (!$ok) return $this->fail('Delete failed');
         return $this->respondDeleted(['deleted'=>true]);
@@ -1215,9 +2188,21 @@ if ($search !== '') {
         global $conn;
         if (!$id) return $this->failValidationErrors('Missing id');
 
-        $stmt = $conn->prepare("SELECT * FROM products WHERE id=?");
-        $stmt->bind_param("i",$id); $stmt->execute();
-        $product = $stmt->get_result()->fetch_assoc(); $stmt->close();
+
+        $stmt = $conn->prepare("
+            SELECT 
+                p.*,
+                w.name AS warehouse_name
+            FROM products p
+            LEFT JOIN warehouses w ON w.id = p.warehouse_id
+            WHERE p.id = ?
+        ");
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $product = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+
         if (!$product) return $this->failNotFound('Product not found');
 
         $stmt = $conn->prepare("SELECT tag_text FROM products_tags WHERE product_id=? ORDER BY tag_text ASC");
@@ -1331,12 +2316,10 @@ if ($search !== '') {
 
   
 
-    /** POST /products/{id}/items/update  — item_id + fields */
     public function updateItem($id = null)
     {
         global $conn;
 
-        // 🔹 Decode JSON body
         $p = json_decode(file_get_contents("php://input"), true) ?? [];
 
         $productId   = $p['product_id'] ?? null;
@@ -1344,7 +2327,7 @@ if ($search !== '') {
         $status      = $p['status'] ?? null;
         $notes       = $p['notes'] ?? '';
         $warehouseId = $p['warehouse_id'] ?? null;
-        $userId      =  $p['uid'] ?? '';
+        $userId      = $p['uid'] ?? '';
 
         if (!$productId || empty($itemIds) || !$status) {
             return $this->failValidationErrors("product_id, item_ids, and status are required");
@@ -1377,8 +2360,7 @@ if ($search !== '') {
                 $stmt->execute();
                 $stmt->close();
 
-
-                // 🔹 2. Get tracking code (serial) from items table
+                // 🔹 2. Get tracking code
                 $stmt = $conn->prepare("SELECT serial FROM items WHERE id=? AND product_id=? LIMIT 1");
                 $stmt->bind_param("ii", $itemId, $productId);
                 $stmt->execute();
@@ -1388,8 +2370,8 @@ if ($search !== '') {
 
                 $trackingCode = $row ? $row['serial'] : null;
 
-                // 🔹 3. Insert into tracking table
-                $action = "update";  // you can change dynamically
+                // 🔹 3. Insert into product_tracking
+                $action = "update";
                 $stmt = $conn->prepare("
                     INSERT INTO product_tracking 
                         (product_id, item_id, action, tracking_code, status, location, remarks, created_at, warehouse_id, user_id) 
@@ -1408,37 +2390,28 @@ if ($search !== '') {
                 );
                 $stmt->execute();
                 $stmt->close();
-
             }
+
+            // 🔹 4. Update product last_status with latest status
+            $stmt = $conn->prepare("UPDATE products SET last_status=? WHERE id=?");
+            $stmt->bind_param("si", $status, $productId);
+            $stmt->execute();
+            $stmt->close();
 
             $conn->commit();
 
             return $this->respond([
                 "status"  => "success",
-                "message" => "Items updated and tracking records created",
-                "updated" => count($itemIds)
+                "message" => "Items updated, tracking records created, and product last_status updated",
+                "updated" => count($itemIds),
+                "last_status" => $status
             ]);
         } catch (\Throwable $e) {
             $conn->rollback();
             return $this->fail("Failed to update items: " . $e->getMessage());
         }
-
-        // global $conn;
-        // $p = json_decode(file_get_contents("php://input"), true) ?? [];
-        // if (!$id || empty($p['item_id'])) return $this->failValidationErrors('item_id required');
-
-        // $fields=[]; $vals=[]; $types='';
-        // foreach (['serial'=>'s','location_code'=>'s','condition_label'=>'s','status'=>'s','acquired_at'=>'s'] as $k=>$t) {
-        //     if (array_key_exists($k,$p)) { $fields[]="$k=?"; $vals[]=$p[$k]; $types.=$t; }
-        // }
-        // if (!$fields) return $this->respond(['message'=>'Nothing to update']);
-        // $vals[] = (int)$p['item_id']; $types.='i';
-
-        // $sql="UPDATE items SET ".implode(',', $fields)." WHERE id=?";
-        // $stmt=$conn->prepare($sql); $stmt->bind_param($types, ...$vals); $stmt->execute(); $stmt->close();
-
-        // return $this->respond(['updated'=>true]);
     }
+
 
 /** POST /products/{id}/items/delete  — item_id or item_ids[] */
 public function deleteItem($id = null)
@@ -1486,6 +2459,21 @@ public function deleteItem($id = null)
     if ($deletedItems < 1) {
         return $this->failNotFound('No items deleted');
     }
+
+
+    // 🔹 Update products.qty with total count of items
+    $resQty = $conn->prepare("SELECT COUNT(*) as total FROM items WHERE product_id=?");
+    $resQty->bind_param("i", $id);
+    $resQty->execute();
+    $rowQty = $resQty->get_result()->fetch_assoc();
+    $resQty->close();
+
+    $totalQty = (int)($rowQty['total'] ?? 0);
+
+    $upd = $conn->prepare("UPDATE products SET qty=? WHERE id=?");
+    $upd->bind_param("ii", $totalQty, $id);
+    $upd->execute();
+    $upd->close();    
 
     // ✅ Step 3: log events for each deleted item
     foreach ($itemIds as $itemId) {
@@ -1615,100 +2603,114 @@ public function deleteItem($id = null)
         $stmt->close();
     }
 
-/** POST /products/{id}/items/add  — qty, serial (opt), batch, warehouse_id, condition_label */
-public function addItem($id = null)
-{
-    global $conn;
-    $p = json_decode(file_get_contents("php://input"), true) ?? [];
+    /** POST /products/{id}/items/add  — qty, serial (opt), batch, warehouse_id, condition_label */
+    public function addItem($id = null)
+    {
+        global $conn;
+        $p = json_decode(file_get_contents("php://input"), true) ?? [];
 
-    // validate qty
-    $qty = isset($p['qty']) && (int)$p['qty'] > 0 ? (int)$p['qty'] : 1;
+        // validate qty
+        $qty = isset($p['qty']) && (int)$p['qty'] > 0 ? (int)$p['qty'] : 1;
 
-    $ser          = trim((string)($p['serial'] ?? '')); // base serial (optional)
-    $batch        = (string)($p['batch'] ?? '');
-    $warehouse_id = (int)($p['warehouse_id'] ?? 0);
-    $condition    = (string)($p['condition'] ?? '');
-    $status       = 'CREATED'; // default
-    $notes        = (string)($p['notes'] ?? '');
-    $id           = (int)($id ?? 0); // product_id must be passed
-    $userId       = ($p['uid'] ?? 0);
+        $ser          = trim((string)($p['serial'] ?? '')); // base serial (optional)
+        $batch        = (string)($p['batch'] ?? '');
+        $warehouse_id = (int)($p['warehouse_id'] ?? 0);
+        $condition    = (string)($p['condition'] ?? '');
+        $status       = 'CREATED'; // default
+        $notes        = (string)($p['notes'] ?? '');
+        $id           = (int)($id ?? 0); // product_id must be passed
+        $userId       = ($p['uid'] ?? 0);
 
-    if (!$id) {
-        return $this->failValidationErrors('Missing product_id');
-    }
-
-    // find current count of items for serial auto-generation
-    $res = $conn->prepare("SELECT COUNT(*) as cnt FROM items WHERE product_id=?");
-    $res->bind_param("i", $id);
-    $res->execute();
-    $row = $res->get_result()->fetch_assoc();
-    $res->close();
-
-    $currentCount = (int)($row['cnt'] ?? 0);
-
-    // prepare insert for items
-    $ins = $conn->prepare("
-        INSERT INTO items 
-        (product_id, serial, batch, current_warehouse_id, condition_label, status, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,NOW())
-    ");
-
-    // prepare insert for tracking
-    $track = $conn->prepare("
-        INSERT INTO product_tracking 
-        (product_id, item_id, action, tracking_code, status, location, remarks, created_at, warehouse_id, user_id)
-        VALUES (?, ?, ?, ?, ?, NULL, ?, NOW(), ?, ?)
-    ");
-
-    for ($i = 0; $i < $qty; $i++) {
-        $serialToUse = $ser;
-
-        // If serial is not given, auto-generate
-        if (empty($serialToUse)) {
-            $serialToUse = "MP" . $id . "-" . str_pad((string)($currentCount + $i + 1), 3, "0", STR_PAD_LEFT);
-        } else {
-            // if base serial provided, keep as is
-            $serialToUse = $ser;
+        if (!$id) {
+            return $this->failValidationErrors('Missing product_id');
         }
 
-        // 🔹 Insert into items
-        $ins->bind_param(
-            "ississs",
-            $id,
-            $serialToUse,
-            $batch,
-            $warehouse_id,
-            $condition,
-            $status,
-            $notes
-        );
-        $ins->execute();
+        // find current count of items for serial auto-generation
+        $res = $conn->prepare("SELECT COUNT(*) as cnt FROM items WHERE product_id=?");
+        $res->bind_param("i", $id);
+        $res->execute();
+        $row = $res->get_result()->fetch_assoc();
+        $res->close();
 
-        $itemId = $conn->insert_id; // get new item id
+        $currentCount = (int)($row['cnt'] ?? 0);
 
-        // 🔹 Insert tracking record
-        $action = "ADD";
-        $track->bind_param(
-            "iissssii",
-            $id,
-            $itemId,
-            $action,
-            $serialToUse,  // use the serial as tracking_code
-            $status,
-            $notes,
-            $warehouse_id,
-            $userId
-        );
-        $track->execute();
+        // prepare insert for items
+        $ins = $conn->prepare("
+            INSERT INTO items 
+            (product_id, serial, batch, current_warehouse_id, condition_label, status, notes, created_at)
+            VALUES (?,?,?,?,?,?,?,NOW())
+        ");
+
+        // prepare insert for tracking
+        $track = $conn->prepare("
+            INSERT INTO product_tracking 
+            (product_id, item_id, action, tracking_code, status, location, remarks, created_at, warehouse_id, user_id)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, NOW(), ?, ?)
+        ");
+
+        for ($i = 0; $i < $qty; $i++) {
+            $serialToUse = $ser;
+
+            // If serial is not given, auto-generate
+            if (empty($serialToUse)) {
+                $serialToUse = "MP" . $id . "-" . str_pad((string)($currentCount + $i + 1), 3, "0", STR_PAD_LEFT);
+            }
+
+            // 🔹 Insert into items
+            $ins->bind_param(
+                "ississs",
+                $id,
+                $serialToUse,
+                $batch,
+                $warehouse_id,
+                $condition,
+                $status,
+                $notes
+            );
+            $ins->execute();
+
+            $itemId = $conn->insert_id; // get new item id
+
+            // 🔹 Insert tracking record
+            $action = "ADD";
+            $track->bind_param(
+                "iissssii",
+                $id,
+                $itemId,
+                $action,
+                $serialToUse,  // use the serial as tracking_code
+                $status,
+                $notes,
+                $warehouse_id,
+                $userId
+            );
+            $track->execute();
+        }
+
+        $ins->close();
+        $track->close();
+
+        // 🔹 Update products.qty with total count of items
+        $resQty = $conn->prepare("SELECT COUNT(*) as total FROM items WHERE product_id=?");
+        $resQty->bind_param("i", $id);
+        $resQty->execute();
+        $rowQty = $resQty->get_result()->fetch_assoc();
+        $resQty->close();
+
+        $totalQty = (int)($rowQty['total'] ?? 0);
+
+        $upd = $conn->prepare("UPDATE products SET qty=? WHERE id=?");
+        $upd->bind_param("ii", $totalQty, $id);
+        $upd->execute();
+        $upd->close();
+
+        $this->logEvent((int)$id, 'RECEIVED', "Items added", (int)$qty, null, null);
+
+        return $this->respondCreated([
+            'added' => $qty,
+            'new_qty' => $totalQty
+        ]);
     }
-
-    $ins->close();
-    $track->close();
-
-    $this->logEvent((int)$id, 'RECEIVED', "Items added", (int)$qty, null, null);
-
-    return $this->respondCreated(['added' => $qty]);
-}
 
 
 /** POST /products/{id}/items/add  — qty, serial (opt), batch, warehouse_id, condition_label */
@@ -1797,7 +2799,8 @@ public function addItem2($id = null)
         $stat  = (string)($p['status'] ?? 'available');
         $wid   = (int)$p['warehouse_id'];
 
-        $sql = "INSERT INTO items (product_id, serial, current_warehouse_id, condition_label, status, acquired_at)
+        $sql = "INSERT INTO items 
+                (product_id, serial, current_warehouse_id, condition_label, status, acquired_at)
                 VALUES (?, ?, ?, ?, ?, NOW())";
         $stmt = $conn->prepare($sql);
 
@@ -1808,7 +2811,25 @@ public function addItem2($id = null)
         }
         $stmt->close();
 
-        return $this->respondCreated(['added' => $qty]);
+        // 🔹 Update products.qty with total count of items
+        $resQty = $conn->prepare("SELECT COUNT(*) as total FROM items WHERE product_id=?");
+        $resQty->bind_param("i", $id);
+        $resQty->execute();
+        $rowQty = $resQty->get_result()->fetch_assoc();
+        $resQty->close();
+
+        $totalQty = (int)($rowQty['total'] ?? 0);
+
+        $upd = $conn->prepare("UPDATE products SET qty=? WHERE id=?");
+        $upd->bind_param("ii", $totalQty, $id);
+        $upd->execute();
+        $upd->close();
+
+        return $this->respondCreated([
+            'added'    => $qty,
+            'new_qty'  => $totalQty
+        ]);
     }
+
 
 }

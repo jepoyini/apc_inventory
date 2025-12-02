@@ -41,71 +41,8 @@ const ProductCard: () => = ({
           </Badge>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          <p className="text-sm text-gray-600 line-clamp-2">{product.description}</p>
-          
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="text-gray-500">SKU:</span>
-              <span className="ml-1 font-medium">{product.sku}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">QR:</span>
-              <span className="ml-1 font-mono text-xs">{product.qrCode}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Category:</span>
-              <span className="ml-1">{product.category}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Quantity:</span>
-              <span className={`ml-1 font-medium ${getQuantityColor(product.quantity)}`}>
-                {product.quantity}
-              </span>
-            </div>
-          </div>
-          
-          <div className="text-sm">
-            <span className="text-gray-500">Warehouse:</span>
-            <span className="ml-1">{product.warehouse}</span>
-          </div>
-          
-          <div className="text-xs text-gray-400">
-            Created by {product.createdBy} on {new Date(product.createdAt).toLocaleDateString()}
-          </div>
-          
-          <div className="flex items-center justify-between pt-2 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onShowQR?.(product)}
-              className="flex items-center"
-            >
-              <QrCode className="mr-1 h-3 w-3" />
-              QR Code
-            </Button>
-            
-            <div className="flex space-x-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onEdit?.(product)}
-              >
-                <Edit className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onDelete?.(product.id)}
-                className="text-red-600 hover:text-red-700"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </CardContent>
+
+
     </Card>
   );
 };

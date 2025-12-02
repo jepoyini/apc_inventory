@@ -409,3 +409,31 @@ body {
     transform: rotate(360deg);
   }
 }
+
+@media print {
+  .print-hide, .navbar, header, footer {
+    display: none !important;
+  }
+
+  .report-title {
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}
+
